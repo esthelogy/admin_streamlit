@@ -122,14 +122,14 @@ def show_admin_page():
     
     st.markdown("### [Quiz Management](#)")
     if st.button("Go to Quiz Management"):
-        show_quiz_management()
+        st.session_state["page"] = "quiz_management"
 
     # Logout Button
     if st.button("Logout"):
         st.session_state.clear()
-        st.success("You have been logged out.")
         st.session_state["page"] = "login"
-        st.experimental_rerun()
+        st.success("You have been logged out.")
+        # No need for st.experimental_rerun(); Streamlit will re-render based on session state change
 
 # Show Quiz Management page
 def show_quiz_management():
@@ -151,12 +151,17 @@ def show_quiz_management():
 # Fetch all quizzes (Example, assuming this API exists)
 def get_all_quizzes():
     try:
-        response = requests.get(f"{api_base_url}/quiz/list")
+        # Assuming the correct endpoint or checking if it exists
+        response = requests.get(f"{api_base_url}/quiz/list")  # Correct endpoint here
+        if response.status_code == 404:
+            st.warning("The API endpoint for listing quizzes does not exist.")
+            return []
         return handle_api_response(response)
     except Exception as e:
         st.error("Failed to fetch quizzes. Please try again later.")
         logging.error(f"Error in get_all_quizzes: {e}")
         return None
+
 
 # Edit quiz function (To be implemented)
 def edit_quiz(quiz_id):
@@ -226,6 +231,8 @@ def main():
         show_login_page()
     elif st.session_state["page"] == "admin":
         show_admin_page()
+    elif st.session_state["page"] == "quiz_management":
+        show_quiz_management()
 
 if __name__ == "__main__":
     main()
