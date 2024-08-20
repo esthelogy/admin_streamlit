@@ -57,7 +57,7 @@ def check_similarity(embedding, threshold=0.6):
         logging.error(f"Similarity check error: {e}")
     return None, None
 
-# API URL
+# API base URL
 api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
 
 # Helper function to handle API responses
@@ -78,11 +78,15 @@ def handle_api_response(response):
 def start_quiz(section_code):
     try:
         response = requests.get(f"{api_base_url}/quiz/start_quiz", params={"section_code": section_code})
-        return handle_api_response(response)
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            return result["question_details"]
+        else:
+            st.error("Failed to start quiz. Please try again later.")
     except Exception as e:
         st.error("Failed to start quiz. Please try again later.")
         logging.error(f"Error in start_quiz: {e}")
-        return None
+    return None
 
 # Fetch Next Question
 def fetch_next_question(quiz_id, question_id, response, response_time):
@@ -94,22 +98,86 @@ def fetch_next_question(quiz_id, question_id, response, response_time):
     }
     try:
         response = requests.post(f"{api_base_url}/quiz/fetch_next", json=payload)
-        return handle_api_response(response)
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            return result["question_details"]
+        else:
+            st.error("Failed to fetch next question. Please try again later.")
     except Exception as e:
         st.error("Failed to fetch next question. Please try again later.")
         logging.error(f"Error in fetch_next_question: {e}")
-        return None
+    return None
 
 # Submit Full Quiz
 def submit_full_quiz(quiz_id):
     payload = {"quiz_id": quiz_id}
     try:
         response = requests.post(f"{api_base_url}/quiz/submit", json=payload)
-        return handle_api_response(response)
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success("Quiz submitted successfully!")
+            return result["result_summary"]
+        else:
+            st.error("Failed to submit quiz. Please try again later.")
     except Exception as e:
         st.error("Failed to submit quiz. Please try again later.")
         logging.error(f"Error in submit_full_quiz: {e}")
-        return None
+    return None
+
+# Fetch All Quizzes
+def get_all_quizzes():
+    try:
+        response = requests.get(f"{api_base_url}/quiz/list")
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            return result["quizzes"]
+        else:
+            st.error("Failed to fetch quizzes. Please try again later.")
+    except Exception as e:
+        st.error("Failed to fetch quizzes. Please try again later.")
+        logging.error(f"Error in get_all_quizzes: {e}")
+    return []
+
+# Delete Quiz
+def delete_quiz(quiz_id):
+    try:
+        response = requests.delete(f"{api_base_url}/quiz/{quiz_id}")
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success(f"Quiz {quiz_id} deleted successfully!")
+        else:
+            st.error(f"Failed to delete quiz {quiz_id}.")
+    except Exception as e:
+        st.error(f"Failed to delete quiz {quiz_id}. Please try again later.")
+        logging.error(f"Error in delete_quiz: {e}")
+
+# Update Quiz
+def update_quiz(quiz_id, quiz_data):
+    try:
+        response = requests.put(f"{api_base_url}/quiz/{quiz_id}", json=quiz_data)
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success(f"Quiz {quiz_id} updated successfully!")
+        else:
+            st.error(f"Failed to update quiz {quiz_id}.")
+    except Exception as e:
+        st.error(f"Failed to update quiz {quiz_id}. Please try again later.")
+        logging.error(f"Error in update_quiz: {e}")
+
+# Create New Quiz
+def create_quiz(quiz_data):
+    try:
+        response = requests.post(f"{api_base_url}/quiz/create", json=quiz_data)
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success("Quiz created successfully!")
+            return result
+        else:
+            st.error("Failed to create quiz. Please try again later.")
+    except Exception as e:
+        st.error("Failed to create quiz. Please try again later.")
+        logging.error(f"Error in create_quiz: {e}")
+    return None
 
 # Main Admin Page after login
 def show_admin_page():
@@ -129,79 +197,45 @@ def show_admin_page():
         st.session_state.clear()
         st.session_state["page"] = "login"
         st.success("You have been logged out.")
-        # No need for st.experimental_rerun(); Streamlit will re-render based on session state change
 
 # Show Quiz Management page
 def show_quiz_management():
     st.subheader("Quiz Management")
 
-    # List all quizzes (Assuming an API endpoint exists to get all quizzes)
+    # List all quizzes
     quizzes = get_all_quizzes()
     if quizzes:
         for quiz in quizzes:
-            st.write(f"Quiz ID: {quiz['quiz_id']}, Section: {quiz['section_code']}")
+            st.write(f"Quiz ID: {quiz['quiz_id']}, Section: {quiz['section_code']}, Title: {quiz['title']}")
             if st.button(f"Edit Quiz {quiz['quiz_id']}", key=f"edit_{quiz['quiz_id']}"):
                 edit_quiz(quiz['quiz_id'])
             if st.button(f"Delete Quiz {quiz['quiz_id']}", key=f"delete_{quiz['quiz_id']}"):
                 delete_quiz(quiz['quiz_id'])
 
     if st.button("Create New Quiz"):
-        create_quiz()
+        create_quiz_page()
 
-# Fetch all quizzes (Example, assuming this API exists)
-def get_all_quizzes():
-    try:
-        # Assuming the correct endpoint or checking if it exists
-        response = requests.get(f"{api_base_url}/quiz/list")  # Correct endpoint here
-        if response.status_code == 404:
-            st.warning("The API endpoint for listing quizzes does not exist.")
-            return []
-        return handle_api_response(response)
-    except Exception as e:
-        st.error("Failed to fetch quizzes. Please try again later.")
-        logging.error(f"Error in get_all_quizzes: {e}")
-        return None
-
-
-# Edit quiz function (To be implemented)
+# Edit quiz function
 def edit_quiz(quiz_id):
     st.write(f"Editing Quiz {quiz_id}...")
     # Implement the functionality for editing the quiz
+    # You can load existing quiz data, allow editing of sections/questions, and then use update_quiz
 
-# Delete quiz function
-def delete_quiz(quiz_id):
-    try:
-        response = requests.delete(f"{api_base_url}/quiz/{quiz_id}")
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            st.success(f"Quiz {quiz_id} deleted successfully!")
-        else:
-            st.error(f"Failed to delete quiz {quiz_id}.")
-    except Exception as e:
-        st.error(f"Failed to delete quiz {quiz_id}. Please try again later.")
-        logging.error(f"Error in delete_quiz: {e}")
-
-def create_quiz():
+# Create quiz page
+def create_quiz_page():
     st.title("Create a New Quiz")
     st.write("You can add sections, subsections, and questions. Each question will be checked for similarity before being added.")
 
-    # Initialize session state to store the quiz structure if not already done
     if "new_quiz" not in st.session_state:
         st.session_state["new_quiz"] = {
             "quiz_title": "",
             "sections": []
         }
 
-    # Input for quiz title
     st.session_state["new_quiz"]["quiz_title"] = st.text_input("Enter Quiz Title", value=st.session_state["new_quiz"]["quiz_title"], help="The title of the quiz.")
-
-    # Input for new section name
     new_section_name = st.text_input("Enter Section Name", help="Add a new section to your quiz.")
-
-    # Input for new subsection name
     new_subsection_name = st.text_input("Enter Subsection Name", help="Add a new subsection under the section.")
 
-    # Add a new section when the button is clicked
     if st.button("Add Section"):
         if new_section_name:
             st.session_state["new_quiz"]["sections"].append({
@@ -212,7 +246,6 @@ def create_quiz():
         else:
             st.error("Please enter a section name.")
 
-    # Add a new subsection to the last section
     if st.button("Add Subsection"):
         if new_subsection_name and st.session_state["new_quiz"]["sections"]:
             st.session_state["new_quiz"]["sections"][-1]["subsections"].append({
@@ -223,21 +256,15 @@ def create_quiz():
         else:
             st.error("Please enter a subsection name or add a section first.")
 
-    # Display existing sections and subsections
     for section_idx, section in enumerate(st.session_state["new_quiz"]["sections"]):
         st.subheader(f"Section {section_idx + 1}: {section['section_name']}")
-
         for subsection_idx, subsection in enumerate(section["subsections"]):
             st.text(f"Subsection {subsection_idx + 1}: {subsection['subsection_name']}")
 
-            # Add questions to the subsection
             question_text = st.text_input(f"Enter a question for {subsection['subsection_name']}:", key=f"question_{section_idx}_{subsection_idx}")
             if st.button(f"Add Question to {subsection['subsection_name']}", key=f"add_question_{section_idx}_{subsection_idx}"):
                 if question_text:
-                    # Get the embedding for the question
                     embedding = get_embedding(question_text)
-                    
-                    # Check for similar questions in Pinecone
                     similar_question, score = check_similarity(embedding)
                     if similar_question:
                         st.warning(f"This question is similar to an existing question: '{similar_question}' with a similarity score of {(score*100):.2f}. Consider revising it.")
@@ -248,27 +275,15 @@ def create_quiz():
                 else:
                     st.error("Please enter a question.")
 
-    # Save the quiz
     if st.button("Save Quiz"):
-        # API call to save the quiz
-        if save_quiz_to_api(st.session_state["new_quiz"]):
+        if create_quiz(st.session_state["new_quiz"]):
             st.success("Quiz saved successfully!")
             st.session_state.pop("new_quiz")
         else:
             st.error("Failed to save the quiz. Please try again later.")
 
-    # Back button
     if st.button("Back"):
         st.session_state["page"] = "admin"
-
-def save_quiz_to_api(quiz_data):
-    try:
-        response = requests.post(f"{api_base_url}/quiz/create", json=quiz_data)
-        return handle_api_response(response)
-    except Exception as e:
-        logging.error(f"Error saving quiz: {e}")
-        return False
-
 
 # Function to display the login page
 def show_login_page():
@@ -276,11 +291,10 @@ def show_login_page():
 
     username = st.text_input("Email")
     password = st.text_input("Password", type="password")
-    api_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0/user/login"
+    api_url = f"{api_base_url}/user/login"
 
     if st.button("Login"):
         auth_response = authenticate(username, password, api_url)
-
         if auth_response:
             if auth_response.get("success") and auth_response.get("role") == "admin":
                 st.success("Login successful!")
