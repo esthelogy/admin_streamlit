@@ -115,29 +115,38 @@ def submit_full_quiz(quiz_id):
 def show_admin_page():
     st.title("Admin Page")
 
-    # Display main menu
-    menu = ["Approval Management", "Quiz Management"]
-    choice = st.sidebar.selectbox("Select an option", menu)
+    # Display main menu as expanded links
+    st.subheader("Menu")
+    st.markdown("### [Approval Management](#)")
+    st.write("This function will be implemented later.")
+    
+    st.markdown("### [Quiz Management](#)")
+    if st.button("Go to Quiz Management"):
+        show_quiz_management()
 
-    if choice == "Approval Management":
-        st.subheader("Approval Management")
-        st.write("This function will be implemented later.")
+    # Logout Button
+    if st.button("Logout"):
+        st.session_state.clear()
+        st.success("You have been logged out.")
+        st.session_state["page"] = "login"
+        st.experimental_rerun()
 
-    elif choice == "Quiz Management":
-        st.subheader("Quiz Management")
+# Show Quiz Management page
+def show_quiz_management():
+    st.subheader("Quiz Management")
 
-        # List all quizzes (Assuming an API endpoint exists to get all quizzes)
-        quizzes = get_all_quizzes()
-        if quizzes:
-            for quiz in quizzes:
-                st.write(f"Quiz ID: {quiz['quiz_id']}, Section: {quiz['section_code']}")
-                if st.button(f"Edit Quiz {quiz['quiz_id']}", key=f"edit_{quiz['quiz_id']}"):
-                    edit_quiz(quiz['quiz_id'])
-                if st.button(f"Delete Quiz {quiz['quiz_id']}", key=f"delete_{quiz['quiz_id']}"):
-                    delete_quiz(quiz['quiz_id'])
+    # List all quizzes (Assuming an API endpoint exists to get all quizzes)
+    quizzes = get_all_quizzes()
+    if quizzes:
+        for quiz in quizzes:
+            st.write(f"Quiz ID: {quiz['quiz_id']}, Section: {quiz['section_code']}")
+            if st.button(f"Edit Quiz {quiz['quiz_id']}", key=f"edit_{quiz['quiz_id']}"):
+                edit_quiz(quiz['quiz_id'])
+            if st.button(f"Delete Quiz {quiz['quiz_id']}", key=f"delete_{quiz['quiz_id']}"):
+                delete_quiz(quiz['quiz_id'])
 
-        if st.button("Create New Quiz"):
-            create_quiz()
+    if st.button("Create New Quiz"):
+        create_quiz()
 
 # Fetch all quizzes (Example, assuming this API exists)
 def get_all_quizzes():
