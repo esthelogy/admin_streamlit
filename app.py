@@ -111,71 +111,112 @@ def submit_full_quiz(quiz_id):
         logging.error(f"Error in submit_full_quiz: {e}")
         return None
 
-# Main Quiz Function
-def run_quiz():
-    st.title("Quiz Time!")
+# Main Admin Page after login
+def show_admin_page():
+    st.title("Admin Page")
 
-    if "quiz_id" not in st.session_state:
-        st.session_state.quiz_id = None
-        st.session_state.current_question = None
-        st.session_state.current_question_index = 0
+    # Display main menu
+    menu = ["Approval Management", "Quiz Management"]
+    choice = st.sidebar.selectbox("Select an option", menu)
 
-    # Start quiz
-    section_code = st.text_input("Enter the section code to start the quiz")
-    if st.button("Start Quiz"):
-        if section_code:
-            result = start_quiz(section_code)
-            if result and result.get("success"):
-                st.session_state.quiz_id = result["question_details"]["quiz_id"]
-                st.session_state.current_question = result["question_details"]["question"]
-                st.session_state.total_question_count = result["question_details"]["total_question_count"]
-                st.session_state.current_question_index = result["question_details"]["current_question_index"]
-                st.success("Quiz started successfully!")
+    if choice == "Approval Management":
+        st.subheader("Approval Management")
+        st.write("This function will be implemented later.")
+
+    elif choice == "Quiz Management":
+        st.subheader("Quiz Management")
+
+        # List all quizzes (Assuming an API endpoint exists to get all quizzes)
+        quizzes = get_all_quizzes()
+        if quizzes:
+            for quiz in quizzes:
+                st.write(f"Quiz ID: {quiz['quiz_id']}, Section: {quiz['section_code']}")
+                if st.button(f"Edit Quiz {quiz['quiz_id']}", key=f"edit_{quiz['quiz_id']}"):
+                    edit_quiz(quiz['quiz_id'])
+                if st.button(f"Delete Quiz {quiz['quiz_id']}", key=f"delete_{quiz['quiz_id']}"):
+                    delete_quiz(quiz['quiz_id'])
+
+        if st.button("Create New Quiz"):
+            create_quiz()
+
+# Fetch all quizzes (Example, assuming this API exists)
+def get_all_quizzes():
+    try:
+        response = requests.get(f"{api_base_url}/quiz/list")
+        return handle_api_response(response)
+    except Exception as e:
+        st.error("Failed to fetch quizzes. Please try again later.")
+        logging.error(f"Error in get_all_quizzes: {e}")
+        return None
+
+# Edit quiz function (To be implemented)
+def edit_quiz(quiz_id):
+    st.write(f"Editing Quiz {quiz_id}...")
+    # Implement the functionality for editing the quiz
+
+# Delete quiz function
+def delete_quiz(quiz_id):
+    try:
+        response = requests.delete(f"{api_base_url}/quiz/{quiz_id}")
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success(f"Quiz {quiz_id} deleted successfully!")
+        else:
+            st.error(f"Failed to delete quiz {quiz_id}.")
+    except Exception as e:
+        st.error(f"Failed to delete quiz {quiz_id}. Please try again later.")
+        logging.error(f"Error in delete_quiz: {e}")
+
+# Create new quiz function (To be implemented)
+def create_quiz():
+    st.write("Creating a new quiz...")
+    # Implement the functionality for creating a new quiz
+
+# Function to display the login page
+def show_login_page():
+    st.title("Esthelogy Admin")
+
+    username = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    api_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0/user/login"
+
+    if st.button("Login"):
+        auth_response = authenticate(username, password, api_url)
+
+        if auth_response:
+            if auth_response.get("success") and auth_response.get("role") == "admin":
+                st.success("Login successful!")
+                st.session_state["auth_token"] = auth_response.get("access_token", "")
+                st.session_state["user_id"] = auth_response.get("user_id", "")
+                st.session_state["page"] = "admin"
+            elif auth_response.get("role") != "admin":
+                st.error("Access denied: You do not have admin privileges.")
             else:
-                st.error(result.get("message", "Failed to start quiz"))
+                st.error(f"Login failed: {auth_response.get('message')}")
+        else:
+            st.error("Login failed. Please check your credentials or API URL.")
 
-    # Display current question
-    if st.session_state.quiz_id and st.session_state.current_question:
-        question_data = st.session_state.current_question
-        st.subheader(f"Question {st.session_state.current_question_index + 1}")
-        st.write(question_data["question"])
-
-        # Display options
-        selected_option = st.radio("Select an option:", question_data["options"])
-
-        if st.button("Submit and Next"):
-            result = fetch_next_question(
-                quiz_id=st.session_state.quiz_id,
-                question_id=question_data["question_id"],
-                response=selected_option,
-                response_time=0  # In a real scenario, you would measure the time taken to respond
-            )
-            if result and result.get("success"):
-                if st.session_state.current_question_index + 1 < st.session_state.total_question_count:
-                    st.session_state.current_question = result["question_details"]["question"]
-                    st.session_state.current_question_index += 1
-                    st.success("Next question loaded.")
-                else:
-                    st.session_state.current_question = None
-                    st.success("Quiz completed! Submitting your answers...")
-                    submit_full_quiz(st.session_state.quiz_id)
-            else:
-                st.error(result.get("message", "Failed to fetch the next question"))
-
-    # Finalize the quiz
-    if st.session_state.quiz_id and st.session_state.current_question is None:
-        st.success("You have completed the quiz! Thank you for participating.")
-        if st.button("Submit Quiz"):
-            result = submit_full_quiz(st.session_state.quiz_id)
-            if result and result.get("success"):
-                st.success("Quiz submitted successfully!")
-                st.session_state.clear()
-            else:
-                st.error(result.get("message", "Failed to submit the quiz"))
+# Authenticate user
+def authenticate(username, password, api_url):
+    payload = {"email": username, "password": password}
+    try:
+        response = requests.post(api_url, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error("Failed to authenticate. Please check your credentials or API URL.")
+        logging.error(f"Authentication error: {e}")
+        return None
 
 # Main function to control the app flow
 def main():
-    run_quiz()
+    if "page" not in st.session_state:
+        st.session_state["page"] = "login"
+
+    if st.session_state["page"] == "login":
+        show_login_page()
+    elif st.session_state["page"] == "admin":
+        show_admin_page()
 
 if __name__ == "__main__":
     main()
