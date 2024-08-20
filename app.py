@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import os
 import logging
 from openai import OpenAI
 from pinecone import Pinecone
@@ -56,152 +57,125 @@ def check_similarity(embedding, threshold=0.6):
         logging.error(f"Similarity check error: {e}")
     return None, None
 
-# Function to store question in Pinecone
-def store_question(question, embedding):
-    try:
-        index.upsert(vectors=[{
-            "id": question,
-            "values": embedding,
-            "metadata": {"question": question}
-        }])
-    except Exception as e:
-        st.error("Failed to store the question. Please try again later.")
-        logging.error(f"Question storage error: {e}")
+# API URL
+api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
 
-# Function to authenticate user
-def authenticate(username, password, api_url):
-    payload = {"email": username, "password": password}
+# Helper function to handle API responses
+def handle_api_response(response):
     try:
-        response = requests.post(api_url, json=payload)
         response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error("Failed to authenticate. Please check your credentials or API URL.")
-        logging.error(f"Authentication error: {e}")
+    except requests.exceptions.HTTPError as http_err:
+        st.error(f"HTTP error occurred: {response.json().get('message', str(http_err))}")
+        logging.error(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        st.error(f"An error occurred: {err}")
+        logging.error(f"Unexpected error: {err}")
+        return None
+    return response.json()
+
+# Start Quiz
+def start_quiz(section_code):
+    try:
+        response = requests.get(f"{api_base_url}/quiz/start_quiz", params={"section_code": section_code})
+        return handle_api_response(response)
+    except Exception as e:
+        st.error("Failed to start quiz. Please try again later.")
+        logging.error(f"Error in start_quiz: {e}")
         return None
 
-# Function to display the questionnaire creation page
-def show_questionnaire_page():
-    st.title("Create a New Questionnaire")
-    st.write("You can add sections, subsections, and questions. Each question will be checked for similarity before being added.")
+# Fetch Next Question
+def fetch_next_question(quiz_id, question_id, response, response_time):
+    payload = {
+        "quiz_id": quiz_id,
+        "question_id": question_id,
+        "response": response,
+        "response_time": response_time
+    }
+    try:
+        response = requests.post(f"{api_base_url}/quiz/fetch_next", json=payload)
+        return handle_api_response(response)
+    except Exception as e:
+        st.error("Failed to fetch next question. Please try again later.")
+        logging.error(f"Error in fetch_next_question: {e}")
+        return None
 
-    if "questionnaire" not in st.session_state:
-        st.session_state["questionnaire"] = []
+# Submit Full Quiz
+def submit_full_quiz(quiz_id):
+    payload = {"quiz_id": quiz_id}
+    try:
+        response = requests.post(f"{api_base_url}/quiz/submit", json=payload)
+        return handle_api_response(response)
+    except Exception as e:
+        st.error("Failed to submit quiz. Please try again later.")
+        logging.error(f"Error in submit_full_quiz: {e}")
+        return None
 
-    new_section_name = st.text_input("Enter Section Name")
-    new_subsection_name = st.text_input("Enter Subsection Name")
+# Main Quiz Function
+def run_quiz():
+    st.title("Quiz Time!")
 
-    if st.button("Add Section"):
-        if new_section_name:
-            st.session_state["questionnaire"].append({"section_name": new_section_name, "subsections": []})
-            st.success(f"Section '{new_section_name}' added.")
-        else:
-            st.error("Please enter a section name.")
+    if "quiz_id" not in st.session_state:
+        st.session_state.quiz_id = None
+        st.session_state.current_question = None
+        st.session_state.current_question_index = 0
 
-    if st.button("Add Subsection"):
-        if new_subsection_name and st.session_state["questionnaire"]:
-            st.session_state["questionnaire"][-1]["subsections"].append({"subsection_name": new_subsection_name, "questions": []})
-            st.success(f"Subsection '{new_subsection_name}' added to Section '{st.session_state['questionnaire'][-1]['section_name']}'.")
-        else:
-            st.error("Please enter a subsection name or add a section first.")
-
-    for section_idx, section in enumerate(st.session_state["questionnaire"]):
-        st.subheader(f"Section {section_idx + 1}: {section['section_name']}")
-
-        if st.button(f"Edit Section {section_idx + 1}"):
-            new_name = st.text_input(f"New name for Section {section_idx + 1}", section["section_name"], key=f"edit_section_{section_idx}")
-            if st.button(f"Save Section {section_idx + 1}"):
-                st.session_state["questionnaire"][section_idx]["section_name"] = new_name
-                st.success(f"Section {section_idx + 1} renamed to '{new_name}'.")
-
-        if st.button(f"Delete Section {section_idx + 1}"):
-            st.session_state["questionnaire"].pop(section_idx)
-            st.success(f"Section {section_idx + 1} deleted.")
-            st.experimental_rerun()
-
-        if section_idx > 0 and st.button(f"Move Section {section_idx + 1} Up"):
-            st.session_state["questionnaire"].insert(section_idx - 1, st.session_state["questionnaire"].pop(section_idx))
-            st.experimental_rerun()
-
-        for subsection_idx, subsection in enumerate(section["subsections"]):
-            st.text(f"Subsection {subsection_idx + 1}: {subsection['subsection_name']}")
-
-            if st.button(f"Edit Subsection {section_idx + 1}.{subsection_idx + 1}"):
-                new_name = st.text_input(f"New name for Subsection {section_idx + 1}.{subsection_idx + 1}", subsection["subsection_name"], key=f"edit_subsection_{section_idx}_{subsection_idx}")
-                if st.button(f"Save Subsection {section_idx + 1}.{subsection_idx + 1}"):
-                    st.session_state["questionnaire"][section_idx]["subsections"][subsection_idx]["subsection_name"] = new_name
-                    st.success(f"Subsection {section_idx + 1}.{subsection_idx + 1} renamed to '{new_name}'.")
-
-            if st.button(f"Delete Subsection {section_idx + 1}.{subsection_idx + 1}"):
-                st.session_state["questionnaire"][section_idx]["subsections"].pop(subsection_idx)
-                st.success(f"Subsection {section_idx + 1}.{subsection_idx + 1} deleted.")
-                st.experimental_rerun()
-
-            if subsection_idx > 0 and st.button(f"Move Subsection {section_idx + 1}.{subsection_idx + 1} Up"):
-                st.session_state["questionnaire"][section_idx]["subsections"].insert(subsection_idx - 1, st.session_state["questionnaire"][section_idx]["subsections"].pop(subsection_idx))
-                st.experimental_rerun()
-
-            for question_idx, question in enumerate(subsection["questions"]):
-                st.text(f"Question {question_idx + 1}: {question}")
-
-                if st.button(f"Edit Question {section_idx + 1}.{subsection_idx + 1}.{question_idx + 1}"):
-                    new_question = st.text_input(f"New text for Question {section_idx + 1}.{subsection_idx + 1}.{question_idx + 1}", question, key=f"edit_question_{section_idx}_{subsection_idx}_{question_idx}")
-                    if st.button(f"Save Question {section_idx + 1}.{subsection_idx + 1}.{question_idx + 1}"):
-                        st.session_state["questionnaire"][section_idx]["subsections"][subsection_idx]["questions"][question_idx] = new_question
-                        st.success(f"Question {section_idx + 1}.{subsection_idx + 1}.{question_idx + 1} updated.")
-
-                if st.button(f"Delete Question {section_idx + 1}.{subsection_idx + 1}.{question_idx + 1}"):
-                    st.session_state["questionnaire"][section_idx]["subsections"][subsection_idx]["questions"].pop(question_idx)
-                    st.success(f"Question {section_idx + 1}.{subsection_idx + 1}.{question_idx + 1} deleted.")
-                    st.experimental_rerun()
-
-                if question_idx > 0 and st.button(f"Move Question {section_idx + 1}.{subsection_idx + 1}.{question_idx + 1} Up"):
-                    st.session_state["questionnaire"][section_idx]["subsections"][subsection_idx]["questions"].insert(question_idx - 1, st.session_state["questionnaire"][section_idx]["subsections"][subsection_idx]["questions"].pop(question_idx))
-                    st.experimental_rerun()
-
-    if st.button("Save Questionnaire"):
-        st.success("Questionnaire saved successfully!")
-        st.write("Saved Questionnaire Data:")
-        st.json(st.session_state["questionnaire"])
-
-    if st.button("Back"):
-        st.session_state["page"] = "login"
-
-# Function to display the login page
-def show_login_page():
-    st.title("Esthelogy Admin")
-
-    username = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    api_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0/user/login"
-
-    login_button_clicked = st.button("Login")
-    if login_button_clicked:
-        auth_response = authenticate(username, password, api_url)
-
-        if auth_response:
-            if auth_response.get("success") and auth_response.get("role") == "admin":
-                st.success("Login successful!")
-                st.session_state["auth_token"] = auth_response.get("access_token", "")
-                st.session_state["user_id"] = auth_response.get("user_id", "")
-                st.session_state["page"] = "questionnaire"
-                st.write("Redirecting to admin page... Click on Login button again")
-            elif auth_response.get("role") != "admin":
-                st.error("Access denied: You do not have admin privileges.")
+    # Start quiz
+    section_code = st.text_input("Enter the section code to start the quiz")
+    if st.button("Start Quiz"):
+        if section_code:
+            result = start_quiz(section_code)
+            if result and result.get("success"):
+                st.session_state.quiz_id = result["question_details"]["quiz_id"]
+                st.session_state.current_question = result["question_details"]["question"]
+                st.session_state.total_question_count = result["question_details"]["total_question_count"]
+                st.session_state.current_question_index = result["question_details"]["current_question_index"]
+                st.success("Quiz started successfully!")
             else:
-                st.error(f"Login failed: {auth_response.get('message')}")
-        else:
-            st.error("Login failed. Please check your credentials or API URL.")
+                st.error(result.get("message", "Failed to start quiz"))
 
-# Main function to control the flow
+    # Display current question
+    if st.session_state.quiz_id and st.session_state.current_question:
+        question_data = st.session_state.current_question
+        st.subheader(f"Question {st.session_state.current_question_index + 1}")
+        st.write(question_data["question"])
+
+        # Display options
+        selected_option = st.radio("Select an option:", question_data["options"])
+
+        if st.button("Submit and Next"):
+            result = fetch_next_question(
+                quiz_id=st.session_state.quiz_id,
+                question_id=question_data["question_id"],
+                response=selected_option,
+                response_time=0  # In a real scenario, you would measure the time taken to respond
+            )
+            if result and result.get("success"):
+                if st.session_state.current_question_index + 1 < st.session_state.total_question_count:
+                    st.session_state.current_question = result["question_details"]["question"]
+                    st.session_state.current_question_index += 1
+                    st.success("Next question loaded.")
+                else:
+                    st.session_state.current_question = None
+                    st.success("Quiz completed! Submitting your answers...")
+                    submit_full_quiz(st.session_state.quiz_id)
+            else:
+                st.error(result.get("message", "Failed to fetch the next question"))
+
+    # Finalize the quiz
+    if st.session_state.quiz_id and st.session_state.current_question is None:
+        st.success("You have completed the quiz! Thank you for participating.")
+        if st.button("Submit Quiz"):
+            result = submit_full_quiz(st.session_state.quiz_id)
+            if result and result.get("success"):
+                st.success("Quiz submitted successfully!")
+                st.session_state.clear()
+            else:
+                st.error(result.get("message", "Failed to submit the quiz"))
+
+# Main function to control the app flow
 def main():
-    if "page" not in st.session_state:
-        st.session_state["page"] = "login"
-
-    if st.session_state["page"] == "login":
-        show_login_page()
-    elif st.session_state["page"] == "questionnaire":
-        show_questionnaire_page()
+    run_quiz()
 
 if __name__ == "__main__":
     main()
