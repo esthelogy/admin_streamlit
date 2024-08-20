@@ -181,10 +181,94 @@ def delete_quiz(quiz_id):
         st.error(f"Failed to delete quiz {quiz_id}. Please try again later.")
         logging.error(f"Error in delete_quiz: {e}")
 
-# Create new quiz function (To be implemented)
 def create_quiz():
-    st.write("Creating a new quiz...")
-    # Implement the functionality for creating a new quiz
+    st.title("Create a New Quiz")
+    st.write("You can add sections, subsections, and questions. Each question will be checked for similarity before being added.")
+
+    # Initialize session state to store the quiz structure if not already done
+    if "new_quiz" not in st.session_state:
+        st.session_state["new_quiz"] = {
+            "quiz_title": "",
+            "sections": []
+        }
+
+    # Input for quiz title
+    st.session_state["new_quiz"]["quiz_title"] = st.text_input("Enter Quiz Title", value=st.session_state["new_quiz"]["quiz_title"], help="The title of the quiz.")
+
+    # Input for new section name
+    new_section_name = st.text_input("Enter Section Name", help="Add a new section to your quiz.")
+
+    # Input for new subsection name
+    new_subsection_name = st.text_input("Enter Subsection Name", help="Add a new subsection under the section.")
+
+    # Add a new section when the button is clicked
+    if st.button("Add Section"):
+        if new_section_name:
+            st.session_state["new_quiz"]["sections"].append({
+                "section_name": new_section_name,
+                "subsections": []
+            })
+            st.success(f"Section '{new_section_name}' added.")
+        else:
+            st.error("Please enter a section name.")
+
+    # Add a new subsection to the last section
+    if st.button("Add Subsection"):
+        if new_subsection_name and st.session_state["new_quiz"]["sections"]:
+            st.session_state["new_quiz"]["sections"][-1]["subsections"].append({
+                "subsection_name": new_subsection_name,
+                "questions": []
+            })
+            st.success(f"Subsection '{new_subsection_name}' added to Section '{st.session_state['new_quiz']['sections'][-1]['section_name']}'.")
+        else:
+            st.error("Please enter a subsection name or add a section first.")
+
+    # Display existing sections and subsections
+    for section_idx, section in enumerate(st.session_state["new_quiz"]["sections"]):
+        st.subheader(f"Section {section_idx + 1}: {section['section_name']}")
+
+        for subsection_idx, subsection in enumerate(section["subsections"]):
+            st.text(f"Subsection {subsection_idx + 1}: {subsection['subsection_name']}")
+
+            # Add questions to the subsection
+            question_text = st.text_input(f"Enter a question for {subsection['subsection_name']}:", key=f"question_{section_idx}_{subsection_idx}")
+            if st.button(f"Add Question to {subsection['subsection_name']}", key=f"add_question_{section_idx}_{subsection_idx}"):
+                if question_text:
+                    # Get the embedding for the question
+                    embedding = get_embedding(question_text)
+                    
+                    # Check for similar questions in Pinecone
+                    similar_question, score = check_similarity(embedding)
+                    if similar_question:
+                        st.warning(f"This question is similar to an existing question: '{similar_question}' with a similarity score of {(score*100):.2f}. Consider revising it.")
+                    else:
+                        subsection["questions"].append(question_text)
+                        store_question(question_text, embedding)
+                        st.success(f"Question added to {subsection['subsection_name']}.")
+                else:
+                    st.error("Please enter a question.")
+
+    # Save the quiz
+    if st.button("Save Quiz"):
+        # API call to save the quiz
+        if save_quiz_to_api(st.session_state["new_quiz"]):
+            st.success("Quiz saved successfully!")
+            st.session_state.pop("new_quiz")
+        else:
+            st.error("Failed to save the quiz. Please try again later.")
+
+    # Back button
+    if st.button("Back"):
+        st.session_state["page"] = "admin"
+
+def save_quiz_to_api(quiz_data):
+    try:
+        response = requests.post(f"{api_base_url}/quiz/create", json=quiz_data)
+        return handle_api_response(response)
+    except Exception as e:
+        logging.error(f"Error saving quiz: {e}")
+        return False
+
 
 # Function to display the login page
 def show_login_page():
