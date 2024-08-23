@@ -32,31 +32,26 @@ api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
 # Initialize Pinecone
 try:
     pc = Pinecone(api_key=pinecone_api_key)
-    index = pc.Index(index_name)
     
-    # Check if the index exists
-    if index_name not in pc.list_indexes():
-        logging.warning(f"Index '{index_name}' not found in Pinecone. Some features may not work properly.")
-        st.warning(f"Index '{index_name}' not found in Pinecone. Some features may not work properly.")
+    # List all indexes
+    all_indexes = pc.list_indexes()
+    st.write(f"Available Pinecone indexes: {all_indexes}")
+    
+    if index_name not in all_indexes:
+        st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {all_indexes}")
+        logging.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {all_indexes}")
     else:
+        index = pc.Index(index_name)
         # Verify the index details
         index_description = index.describe_index_stats()
-        logging.info(f"Successfully connected to Pinecone index: {index_name}")
-        logging.info(f"Index dimensions: {index_description['dimension']}")
-        logging.info(f"Total vectors: {index_description['total_vector_count']}")
+        st.success(f"Successfully connected to Pinecone index: {index_name}")
+        st.info(f"Index dimensions: {index_description['dimension']}")
+        st.info(f"Total vectors: {index_description['total_vector_count']}")
 except Exception as e:
-    logging.error(f"Failed to initialize Pinecone: {str(e)}")
-    st.warning("Failed to initialize Pinecone. Some features may not work properly.")
+    st.error(f"Failed to initialize Pinecone: {str(e)}")
+    logging.error(f"Pinecone initialization error: {e}")
 
 # Initialize OpenAI (keep this part as is)
-try:
-    client = OpenAI(api_key=openai_api_key)
-except Exception as e:
-    st.error(f"Failed to initialize OpenAI: {str(e)}")
-    logging.error(f"OpenAI initialization error: {e}")
-    st.stop()
-
-# Initialize OpenAI
 try:
     client = OpenAI(api_key=openai_api_key)
 except Exception as e:
