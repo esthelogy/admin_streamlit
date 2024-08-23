@@ -37,12 +37,12 @@ try:
     all_indexes = pc.list_indexes()
     st.write(f"Available Pinecone indexes: {all_indexes}")
     
-    # Check if all_indexes is a dictionary and has an 'indexes' key
+    # Extract index names correctly
     if isinstance(all_indexes, dict) and 'indexes' in all_indexes:
         index_names = [index['name'] for index in all_indexes['indexes']]
     else:
-        # If all_indexes is already a list, use it directly
-        index_names = all_indexes
+        index_names = []
+        st.warning(f"Unexpected format of index list: {all_indexes}")
     
     st.write(f"Index names: {index_names}")
     
@@ -56,6 +56,7 @@ try:
         st.success(f"Successfully connected to Pinecone index: {index_name}")
         st.info(f"Index dimensions: {index_description['dimension']}")
         st.info(f"Total vectors: {index_description['total_vector_count']}")
+
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {str(e)}")
     logging.error(f"Pinecone initialization error: {e}")
