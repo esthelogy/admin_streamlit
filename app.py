@@ -8,11 +8,14 @@ from functools import lru_cache
 from typing import List, Dict, Any
 
 # Configure logging
-logging.basicConfig(
-    filename="app.log",
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
+# logging.basicConfig(
+    # filename="app.log",
+    # level=logging.INFO,
+    # format="%(asctime)s %(levelname)s %(message)s"
+# )
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 
 # Load API keys from Streamlit secrets
 try:
@@ -29,38 +32,35 @@ index_name = "title-index"
 # API base URL
 api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
 
-# Initialize Pinecone
+# Pinecone initialization
+st.write("Pinecone initialization started")
 try:
+    logging.debug("Starting Pinecone initialization")
     pc = Pinecone(api_key=pinecone_api_key)
+    logging.debug("Pinecone client created")
     
-    # List all indexes
     all_indexes = pc.list_indexes()
-    st.write(f"Available Pinecone indexes: {all_indexes}")
+    logging.debug(f"All indexes: {all_indexes}")
     
-    # Extract index names correctly
     if isinstance(all_indexes, dict) and 'indexes' in all_indexes:
         index_names = [index['name'] for index in all_indexes['indexes']]
     else:
-        index_names = []
-        st.warning(f"Unexpected format of index list: {all_indexes}")
-    
-    st.write(f"Index names: {index_names}")
+        index_names = all_indexes if isinstance(all_indexes, list) else []
+    logging.debug(f"Extracted index names: {index_names}")
     
     if index_name not in index_names:
-        st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
-        logging.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
+        logging.warning(f"Index '{index_name}' not found. Available indexes: {index_names}")
     else:
         index = pc.Index(index_name)
-        # Verify the index details
-        index_description = index.describe_index_stats()
-        st.success(f"Successfully connected to Pinecone index: {index_name}")
-        st.info(f"Index dimensions: {index_description['dimension']}")
-        st.info(f"Total vectors: {index_description['total_vector_count']}")
+        logging.debug(f"Successfully connected to index: {index_name}")
+        index_stats = index.describe_index_stats()
+        logging.debug(f"Index stats: {index_stats}")
 
 except Exception as e:
+    logging.error(f"Error during Pinecone initialization: {str(e)}", exc_info=True)
     st.error(f"Failed to initialize Pinecone: {str(e)}")
-    logging.error(f"Pinecone initialization error: {e}")
-    st.write(f"Error details: {type(e).__name__}, {str(e)}")
+st.write("App initialization completed")
+logging.debug("Pinecone initialization complete")
 
 # Initialize OpenAI (keep this part as is)
 try:
