@@ -37,8 +37,14 @@ try:
     all_indexes = pc.list_indexes()
     st.write(f"Available Pinecone indexes: {all_indexes}")
     
-    # Extract index names from the response
-    index_names = [index['name'] for index in all_indexes['indexes']]
+    # Check if all_indexes is a dictionary and has an 'indexes' key
+    if isinstance(all_indexes, dict) and 'indexes' in all_indexes:
+        index_names = [index['name'] for index in all_indexes['indexes']]
+    else:
+        # If all_indexes is already a list, use it directly
+        index_names = all_indexes
+    
+    st.write(f"Index names: {index_names}")
     
     if index_name not in index_names:
         st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
@@ -53,6 +59,7 @@ try:
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {str(e)}")
     logging.error(f"Pinecone initialization error: {e}")
+    st.write(f"Error details: {type(e).__name__}, {str(e)}")
 
 # Initialize OpenAI (keep this part as is)
 try:
