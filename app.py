@@ -5,6 +5,7 @@ import logging
 from openai import OpenAI
 from pinecone import Pinecone
 from functools import lru_cache
+from typing import List, Dict, Any
 
 # Configure logging
 logging.basicConfig(
@@ -13,38 +14,30 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
-# Load OpenAI API keys from Streamlit secrets
+# Load API keys from Streamlit secrets
 try:
     openai_api_key = st.secrets["OPENAI_API_KEY"]
-except KeyError as e:
-    st.error("OpenAI API keys are missing. Please configure them in the Streamlit app settings under Secrets.")
-    logging.error(f"Missing API key: {e}")
-    st.stop()
-
-# Load OpenAI API keys from Streamlit secrets
-try:
     pinecone_api_key = st.secrets["PINECONE_API_KEY"]
 except KeyError as e:
-    st.error("Pinecone API keys are missing. Please configure them in the Streamlit app settings under Secrets.")
+    st.error(f"API key is missing: {e}. Please configure it in the Streamlit app settings under Secrets.")
     logging.error(f"Missing API key: {e}")
     st.stop()
 
 # Hard-coded index name
 index_name = "title-index"
 
+# API base URL
+api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
+
 # Initialize Pinecone
 try:
     pc = Pinecone(api_key=pinecone_api_key)
-    
-    # Connect to the existing index
     index = pc.Index(index_name)
-    # After initializing the index
-
+    
     if index_name not in pc.list_indexes():
         st.error(f"Index '{index_name}' not found. Please check the index name and try again.")
         st.stop()
     
-    # Verify the index details
     index_description = index.describe_index_stats()
     st.success(f"Successfully connected to Pinecone index: {index_name}")
     st.info(f"Index dimensions: {index_description['dimension']}")
@@ -61,6 +54,20 @@ except Exception as e:
     st.error(f"Failed to initialize OpenAI: {str(e)}")
     logging.error(f"OpenAI initialization error: {e}")
     st.stop()
+
+# Helper function to handle API responses
+def handle_api_response(response):
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as http_err:
+        st.error(f"HTTP error occurred: {response.json().get('message', str(http_err))}")
+        logging.error(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        st.error(f"An error occurred: {err}")
+        logging.error(f"Unexpected error: {err}")
+        return None
+    return response.json()
 
 # Caching for embedding generation to improve scalability
 @lru_cache(maxsize=1024)
@@ -86,173 +93,191 @@ def check_similarity(embedding, threshold=0.6):
         logging.error(f"Similarity check error: {e}")
     return None, None
 
-# API base URL
-api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
-
-# Helper function to handle API responses
-def handle_api_response(response):
-    try:
-        response.raise_for_status()
-    except requests.exceptions.HTTPError as http_err:
-        st.error(f"HTTP error occurred: {response.json().get('message', str(http_err))}")
-        logging.error(f"HTTP error occurred: {http_err}")
-        return None
-    except Exception as err:
-        st.error(f"An error occurred: {err}")
-        logging.error(f"Unexpected error: {err}")
-        return None
-    return response.json()
-
-# Start Quiz
-def start_quiz(section_code):
-    try:
-        response = requests.get(f"{api_base_url}/quiz/start_quiz", params={"section_code": section_code})
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            return result["question_details"]
-        else:
-            st.error("Failed to start quiz. Please try again later.")
-    except Exception as e:
-        st.error("Failed to start quiz. Please try again later.")
-        logging.error(f"Error in start_quiz: {e}")
-    return None
-
-# Fetch Next Question
-def fetch_next_question(quiz_id, question_id, response, response_time):
-    payload = {
-        "quiz_id": quiz_id,
-        "question_id": question_id,
-        "response": response,
-        "response_time": response_time
-    }
-    try:
-        response = requests.post(f"{api_base_url}/quiz/fetch_next", json=payload)
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            return result["question_details"]
-        else:
-            st.error("Failed to fetch next question. Please try again later.")
-    except Exception as e:
-        st.error("Failed to fetch next question. Please try again later.")
-        logging.error(f"Error in fetch_next_question: {e}")
-    return None
-
-# Submit Full Quiz
-def submit_full_quiz(quiz_id):
-    payload = {"quiz_id": quiz_id}
-    try:
-        response = requests.post(f"{api_base_url}/quiz/submit", json=payload)
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            st.success("Quiz submitted successfully!")
-            return result["result_summary"]
-        else:
-            st.error("Failed to submit quiz. Please try again later.")
-    except Exception as e:
-        st.error("Failed to submit quiz. Please try again later.")
-        logging.error(f"Error in submit_full_quiz: {e}")
-    return None
-
-# Fetch All Quizzes
-def get_all_quizzes():
-    try:
-        response = requests.get(f"{api_base_url}/quiz/list")
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            return result["quizzes"]
-        else:
-            st.error("Failed to fetch quizzes. Please try again later.")
-    except Exception as e:
-        st.error("Failed to fetch quizzes. Please try again later.")
-        logging.error(f"Error in get_all_quizzes: {e}")
-    return []
-
-# Delete Quiz
-def delete_quiz(quiz_id):
-    try:
-        response = requests.delete(f"{api_base_url}/quiz/{quiz_id}")
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            st.success(f"Quiz {quiz_id} deleted successfully!")
-        else:
-            st.error(f"Failed to delete quiz {quiz_id}.")
-    except Exception as e:
-        st.error(f"Failed to delete quiz {quiz_id}. Please try again later.")
-        logging.error(f"Error in delete_quiz: {e}")
-
-# Update Quiz
-def update_quiz(quiz_id, quiz_data):
-    try:
-        response = requests.put(f"{api_base_url}/quiz/{quiz_id}", json=quiz_data)
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            st.success(f"Quiz {quiz_id} updated successfully!")
-        else:
-            st.error(f"Failed to update quiz {quiz_id}.")
-    except Exception as e:
-        st.error(f"Failed to update quiz {quiz_id}. Please try again later.")
-        logging.error(f"Error in update_quiz: {e}")
-
-# Create New Quiz
+# Create Quiz
 def create_quiz(quiz_data):
     try:
-        response = requests.post(f"{api_base_url}/quiz/create", json=quiz_data)
+        response = requests.post(
+            f"{api_base_url}/quiz/create",
+            json=quiz_data,
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
         result = handle_api_response(response)
         if result and result.get("success"):
             st.success("Quiz created successfully!")
-            return result
+            return result.get("quiz")
         else:
-            st.error("Failed to create quiz. Please try again later.")
+            st.error(f"Failed to create quiz: {result.get('message', 'Unknown error')}")
     except Exception as e:
         st.error("Failed to create quiz. Please try again later.")
         logging.error(f"Error in create_quiz: {e}")
     return None
 
-# Main Admin Page after login
+# Fetch All Quizzes
+def get_all_quizzes(page: int = 1, limit: int = 10):
+    try:
+        response = requests.get(
+            f"{api_base_url}/quiz/list",
+            params={"page": page, "limit": limit},
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            return result.get("quizzes", []), result.get("total", 0)
+        else:
+            st.error("Failed to fetch quizzes. Please try again later.")
+    except Exception as e:
+        st.error("Failed to fetch quizzes. Please try again later.")
+        logging.error(f"Error in get_all_quizzes: {e}")
+    return [], 0
+
+# Update Quiz
+def update_quiz(quiz_id: str, quiz_data: dict):
+    try:
+        response = requests.put(
+            f"{api_base_url}/quiz/{quiz_id}",
+            json=quiz_data,
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success(f"Quiz {quiz_id} updated successfully!")
+            return result.get("quiz")
+        else:
+            st.error(f"Failed to update quiz {quiz_id}: {result.get('message', 'Unknown error')}")
+    except Exception as e:
+        st.error(f"Failed to update quiz {quiz_id}. Please try again later.")
+        logging.error(f"Error in update_quiz: {e}")
+    return None
+
+# Delete Quiz
+def delete_quiz(quiz_id: str):
+    try:
+        response = requests.delete(
+            f"{api_base_url}/quiz/{quiz_id}",
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success(f"Quiz {quiz_id} deleted successfully!")
+            return True
+        else:
+            st.error(f"Failed to delete quiz {quiz_id}: {result.get('message', 'Unknown error')}")
+    except Exception as e:
+        st.error(f"Failed to delete quiz {quiz_id}. Please try again later.")
+        logging.error(f"Error in delete_quiz: {e}")
+    return False
+
+# Upload Puzzle
+def upload_puzzle(file, quiz_id: str):
+    try:
+        files = {"file": file}
+        data = {"quiz_id": quiz_id}
+        response = requests.post(
+            f"{api_base_url}/admin/quiz/puzzle/upload",
+            files=files,
+            data=data,
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success("Puzzle uploaded successfully!")
+            return result.get("puzzle")
+        else:
+            st.error(f"Failed to upload puzzle: {result.get('message', 'Unknown error')}")
+    except Exception as e:
+        st.error("Failed to upload puzzle. Please try again later.")
+        logging.error(f"Error in upload_puzzle: {e}")
+    return None
+
+# List Estheticians
+def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
+    try:
+        response = requests.get(
+            f"{api_base_url}/admin/esthetician/list",
+            params={"page": page, "limit": limit},
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            return result.get("estheticians", [])
+        else:
+            st.error("Failed to fetch estheticians. Please try again later.")
+            return []
+    except Exception as e:
+        st.error("An error occurred while fetching estheticians.")
+        logging.error(f"Error in list_estheticians: {e}")
+        return []
+
+# Approve Esthetician
+def approve_esthetician(esthetician_id: str) -> bool:
+    try:
+        response = requests.get(
+            f"{api_base_url}/admin/approve/esthetician/{esthetician_id}",
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success(f"Esthetician {esthetician_id} approved successfully.")
+            return True
+        else:
+            st.error(f"Failed to approve esthetician {esthetician_id}.")
+            return False
+    except Exception as e:
+        st.error(f"An error occurred while approving esthetician {esthetician_id}.")
+        logging.error(f"Error in approve_esthetician: {e}")
+        return False
+
+# Show Admin Page
 def show_admin_page():
     st.title("Admin Page")
-
-    # Display main menu as expanded links
     st.subheader("Menu")
     
-    st.markdown("### [Esthetician Management](#)")
-    if st.button("Go to Esthetician Management"):
+    if st.button("Esthetician Management"):
         st.session_state["page"] = "esthetician_management"
     
-    st.markdown("### [Quiz Management](#)")
-    if st.button("Go to Quiz Management"):
+    if st.button("Quiz Management"):
         st.session_state["page"] = "quiz_management"
 
-    # Logout Button
     if st.button("Logout"):
         st.session_state.clear()
         st.session_state["page"] = "login"
         st.success("You have been logged out.")
 
-# Show Quiz Management page
+# Show Quiz Management Page
 def show_quiz_management():
     st.subheader("Quiz Management")
 
-    # List all quizzes
-    quizzes = get_all_quizzes()
+    page = st.number_input("Page", min_value=1, value=1)
+    limit = st.number_input("Quizzes per page", min_value=1, max_value=100, value=10)
+
+    quizzes, total_quizzes = get_all_quizzes(page, limit)
+    st.write(f"Total Quizzes: {total_quizzes}")
+
     if quizzes:
         for quiz in quizzes:
-            st.write(f"Quiz ID: {quiz['quiz_id']}, Section: {quiz['section_code']}, Title: {quiz['title']}")
-            if st.button(f"Edit Quiz {quiz['quiz_id']}", key=f"edit_{quiz['quiz_id']}"):
-                edit_quiz(quiz['quiz_id'])
-            if st.button(f"Delete Quiz {quiz['quiz_id']}", key=f"delete_{quiz['quiz_id']}"):
-                delete_quiz(quiz['quiz_id'])
+            st.write(f"Quiz ID: {quiz['id']}, Title: {quiz['title']}")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button(f"Edit Quiz {quiz['id']}", key=f"edit_{quiz['id']}"):
+                    st.session_state["editing_quiz"] = quiz
+                    st.session_state["page"] = "edit_quiz"
+            with col2:
+                if st.button(f"Delete Quiz {quiz['id']}", key=f"delete_{quiz['id']}"):
+                    if delete_quiz(quiz['id']):
+                        st.experimental_rerun()
+            with col3:
+                uploaded_file = st.file_uploader(f"Upload Puzzle for Quiz {quiz['id']}", key=f"upload_{quiz['id']}")
+                if uploaded_file is not None:
+                    if upload_puzzle(uploaded_file, quiz['id']):
+                        st.experimental_rerun()
 
     if st.button("Create New Quiz"):
-        create_quiz_page()
+        st.session_state["page"] = "create_quiz"
 
-# Edit quiz function
-def edit_quiz(quiz_id):
-    st.write(f"Editing Quiz {quiz_id}...")
-    # Implement the functionality for editing the quiz
-    # You can load existing quiz data, allow editing of sections/questions, and then use update_quiz
+    if st.button("Back to Admin Page"):
+        st.session_state["page"] = "admin"
 
-# Create quiz page
+# Create Quiz Page
 def create_quiz_page():
     st.title("Create a New Quiz")
     st.write("You can add sections, subsections, and questions. Each question will be checked for similarity before being added.")
@@ -301,7 +326,6 @@ def create_quiz_page():
                         st.warning(f"This question is similar to an existing question: '{similar_question}' with a similarity score of {(score*100):.2f}. Consider revising it.")
                     else:
                         subsection["questions"].append(question_text)
-                        store_question(question_text, embedding)
                         st.success(f"Question added to {subsection['subsection_name']}.")
                 else:
                     st.error("Please enter a question.")
@@ -314,55 +338,76 @@ def create_quiz_page():
             st.error("Failed to save the quiz. Please try again later.")
 
     if st.button("Back"):
-        st.session_state["page"] = "admin"
+        st.session_state["page"] = "quiz_management"
 
-# list estheticians
-def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
-    try:
-        response = requests.get(
-            f"{api_base_url}/admin/esthetician/list",
-            params={"page": page, "limit": limit},
-            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
-        )
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            return result.get("estheticians", [])
-        else:
-            st.error("Failed to fetch estheticians. Please try again later.")
-            return []
-    except Exception as e:
-        st.error("An error occurred while fetching estheticians.")
-        logging.error(f"Error in list_estheticians: {e}")
-        return []
+# Edit Quiz Page
+def edit_quiz_page():
+    if "editing_quiz" not in st.session_state:
+        st.error("No quiz selected for editing.")
+        st.session_state["page"] = "quiz_management"
+        return
+
+    quiz = st.session_state["editing_quiz"]
+    st.title(f"Edit Quiz: {quiz['title']}")
+
+    # Edit quiz title
+    new_title = st.text_input("Quiz Title", value=quiz['title'])
+
+    # Edit sections and subsections
+    updated_sections = []
+    for section in quiz['sections']:
+        st.subheader(f"Section: {section['name']}")
+        new_section_name = st.text_input("Section Name", value=section['name'], key=f"section_{section['id']}")
         
-# esthetician approval managemnt
-def approve_esthetician(esthetician_id: str) -> bool:
-    try:
-        response = requests.get(
-            f"{api_base_url}/admin/approve/esthetician/{esthetician_id}",
-            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
-        )
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            st.success(f"Esthetician {esthetician_id} approved successfully.")
-            return True
-        else:
-            st.error(f"Failed to approve esthetician {esthetician_id}.")
-            return False
-    except Exception as e:
-        st.error(f"An error occurred while approving esthetician {esthetician_id}.")
-        logging.error(f"Error in approve_esthetician: {e}")
-        return False
+        updated_subsections = []
+        for subsection in section['subsections']:
+            st.text(f"Subsection: {subsection['name']}")
+            new_subsection_name = st.text_input("Subsection Name", value=subsection['name'], key=f"subsection_{subsection['id']}")
+            
+            updated_questions = []
+            for question in subsection['questions']:
+                new_question_text = st.text_area("Question", value=question['text'], key=f"question_{question['id']}")
+                if new_question_text != question['text']:
+                    updated_questions.append({"id": question['id'], "text": new_question_text})
+            
+            if new_subsection_name != subsection['name'] or updated_questions:
+                updated_subsections.append({
+                    "id": subsection['id'],
+                    "name": new_subsection_name,
+                    "questions": updated_questions
+                })
+        
+        if new_section_name != section['name'] or updated_subsections:
+            updated_sections.append({
+                "id": section['id'],
+                "name": new_section_name,
+                "subsections": updated_subsections
+            })
 
-# show estheticians
+    if st.button("Save Changes"):
+        updated_quiz = {
+            "id": quiz['id'],
+            "title": new_title,
+            "sections": updated_sections
+        }
+        if update_quiz(quiz['id'], updated_quiz):
+            st.success("Quiz updated successfully!")
+            st.session_state.pop("editing_quiz")
+            st.session_state["page"] = "quiz_management"
+        else:
+            st.error("Failed to update quiz. Please try again.")
+
+    if st.button("Cancel"):
+        st.session_state.pop("editing_quiz")
+        st.session_state["page"] = "quiz_management"
+
+# Show Esthetician Management
 def show_esthetician_management():
     st.title("Esthetician Management")
 
-    # Pagination controls
     page = st.number_input("Page", min_value=1, value=1)
     limit = st.number_input("Estheticians per page", min_value=1, max_value=100, value=10)
 
-    # Fetch and display estheticians
     estheticians = list_estheticians(page, limit)
     
     if estheticians:
@@ -378,7 +423,7 @@ def show_esthetician_management():
     if st.button("Back to Admin Page"):
         st.session_state["page"] = "admin"
 
-# Function to display the login page
+# Show Login Page
 def show_login_page():
     st.title("Esthelogy Admin")
 
@@ -424,6 +469,10 @@ def main():
         show_admin_page()
     elif st.session_state["page"] == "quiz_management":
         show_quiz_management()
+    elif st.session_state["page"] == "create_quiz":
+        create_quiz_page()
+    elif st.session_state["page"] == "edit_quiz":
+        edit_quiz_page()
     elif st.session_state["page"] == "esthetician_management":
         show_esthetician_management()
 
