@@ -73,6 +73,13 @@ except Exception as e:
     st.write(f"Error type: {type(e).__name__}")
     st.write(f"Error details: {str(e)}")
 
+# Initialize OpenAI 
+try:
+    client = OpenAI(api_key=openai_api_key)
+except Exception as e:
+    st.error(f"Failed to initialize OpenAI: {str(e)}")
+    logging.error(f"OpenAI initialization error: {e}")
+    st.stop()
 
 # Helper function to handle API responses
 def handle_api_response(response):
