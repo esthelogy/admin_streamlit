@@ -13,20 +13,36 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
-# Load API keys from Streamlit secrets
+# Load OpenAI API keys from Streamlit secrets
 try:
-    pinecone_api_key = st.secrets["PINECONE_API_KEY"]
     openai_api_key = st.secrets["OPENAI_API_KEY"]
 except KeyError as e:
-    st.error("API keys are missing. Please configure them in the Streamlit app settings under Secrets.")
+    st.error("OpenAI API keys are missing. Please configure them in the Streamlit app settings under Secrets.")
     logging.error(f"Missing API key: {e}")
     st.stop()
+
+# Load OpenAI API keys from Streamlit secrets
+try:
+    pinecone_api_key = st.secrets["PINECONE_API_KEY"]
+except KeyError as e:
+    st.error("Pinecone API keys are missing. Please configure them in the Streamlit app settings under Secrets.")
+    logging.error(f"Missing API key: {e}")
+    st.stop()
+
+# Hard-coded index name
+index_name = "title-index"
 
 # Initialize Pinecone
 try:
     pc = Pinecone(api_key=pinecone_api_key)
-    index_name = "title-index"
+    
+    # Connect to the existing index
     index = pc.Index(index_name)
+    # After initializing the index
+
+    if index_name not in pc.list_indexes():
+        st.error(f"Index '{index_name}' not found. Please check the index name and try again.")
+        st.stop()
     
     # Verify the index details
     index_description = index.describe_index_stats()
@@ -198,8 +214,10 @@ def show_admin_page():
 
     # Display main menu as expanded links
     st.subheader("Menu")
-    st.markdown("### [Approval Management](#)")
-    st.write("This function will be implemented later.")
+    
+    st.markdown("### [Esthetician Management](#)")
+    if st.button("Go to Esthetician Management"):
+        st.session_state["page"] = "esthetician_management"
     
     st.markdown("### [Quiz Management](#)")
     if st.button("Go to Quiz Management"):
@@ -298,6 +316,68 @@ def create_quiz_page():
     if st.button("Back"):
         st.session_state["page"] = "admin"
 
+# list estheticians
+def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
+    try:
+        response = requests.get(
+            f"{api_base_url}/admin/esthetician/list",
+            params={"page": page, "limit": limit},
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            return result.get("estheticians", [])
+        else:
+            st.error("Failed to fetch estheticians. Please try again later.")
+            return []
+    except Exception as e:
+        st.error("An error occurred while fetching estheticians.")
+        logging.error(f"Error in list_estheticians: {e}")
+        return []
+        
+# esthetician approval managemnt
+def approve_esthetician(esthetician_id: str) -> bool:
+    try:
+        response = requests.get(
+            f"{api_base_url}/admin/approve/esthetician/{esthetician_id}",
+            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        )
+        result = handle_api_response(response)
+        if result and result.get("success"):
+            st.success(f"Esthetician {esthetician_id} approved successfully.")
+            return True
+        else:
+            st.error(f"Failed to approve esthetician {esthetician_id}.")
+            return False
+    except Exception as e:
+        st.error(f"An error occurred while approving esthetician {esthetician_id}.")
+        logging.error(f"Error in approve_esthetician: {e}")
+        return False
+
+# show estheticians
+def show_esthetician_management():
+    st.title("Esthetician Management")
+
+    # Pagination controls
+    page = st.number_input("Page", min_value=1, value=1)
+    limit = st.number_input("Estheticians per page", min_value=1, max_value=100, value=10)
+
+    # Fetch and display estheticians
+    estheticians = list_estheticians(page, limit)
+    
+    if estheticians:
+        for esthetician in estheticians:
+            st.write(f"ID: {esthetician['id']}, Name: {esthetician['name']}, Email: {esthetician['email']}")
+            if esthetician['status'] != 'approved':
+                if st.button(f"Approve {esthetician['name']}", key=f"approve_{esthetician['id']}"):
+                    if approve_esthetician(esthetician['id']):
+                        st.experimental_rerun()
+    else:
+        st.write("No estheticians found or failed to fetch the list.")
+
+    if st.button("Back to Admin Page"):
+        st.session_state["page"] = "admin"
+
 # Function to display the login page
 def show_login_page():
     st.title("Esthelogy Admin")
@@ -344,6 +424,8 @@ def main():
         show_admin_page()
     elif st.session_state["page"] == "quiz_management":
         show_quiz_management()
+    elif st.session_state["page"] == "esthetician_management":
+        show_esthetician_management()
 
 if __name__ == "__main__":
     main()
