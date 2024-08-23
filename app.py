@@ -25,8 +25,14 @@ except KeyError as e:
 # Initialize Pinecone
 try:
     pc = Pinecone(api_key=pinecone_api_key)
-    index_name = "questionnaire-index"
+    index_name = "title-index"
     index = pc.Index(index_name)
+    
+    # Verify the index details
+    index_description = index.describe_index_stats()
+    st.success(f"Successfully connected to Pinecone index: {index_name}")
+    st.info(f"Index dimensions: {index_description['dimension']}")
+    st.info(f"Total vectors: {index_description['total_vector_count']}")
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {str(e)}")
     logging.error(f"Pinecone initialization error: {e}")
