@@ -34,17 +34,26 @@ try:
     pc = Pinecone(api_key=pinecone_api_key)
     index = pc.Index(index_name)
     
-    #if index_name not in pc.list_indexes():
-    #    st.error(f"Index '{index_name}' not found. Please check the index name and try again.")
-    #    st.stop()
-    
-    index_description = index.describe_index_stats()
-    st.success(f"Successfully connected to Pinecone index: {index_name}")
-    st.info(f"Index dimensions: {index_description['dimension']}")
-    st.info(f"Total vectors: {index_description['total_vector_count']}")
+    # Check if the index exists
+    if index_name not in pc.list_indexes():
+        logging.warning(f"Index '{index_name}' not found in Pinecone. Some features may not work properly.")
+        st.warning(f"Index '{index_name}' not found in Pinecone. Some features may not work properly.")
+    else:
+        # Verify the index details
+        index_description = index.describe_index_stats()
+        logging.info(f"Successfully connected to Pinecone index: {index_name}")
+        logging.info(f"Index dimensions: {index_description['dimension']}")
+        logging.info(f"Total vectors: {index_description['total_vector_count']}")
 except Exception as e:
-    st.error(f"Failed to initialize Pinecone: {str(e)}")
-    logging.error(f"Pinecone initialization error: {e}")
+    logging.error(f"Failed to initialize Pinecone: {str(e)}")
+    st.warning("Failed to initialize Pinecone. Some features may not work properly.")
+
+# Initialize OpenAI (keep this part as is)
+try:
+    client = OpenAI(api_key=openai_api_key)
+except Exception as e:
+    st.error(f"Failed to initialize OpenAI: {str(e)}")
+    logging.error(f"OpenAI initialization error: {e}")
     st.stop()
 
 # Initialize OpenAI
@@ -82,6 +91,9 @@ def get_embedding(text, model="text-embedding-3-small"):
 
 # Function to check for similar questions in Pinecone
 def check_similarity(embedding, threshold=0.6):
+    if 'index' not in globals():
+        logging.warning("Pinecone index not available. Similarity check skipped.")
+        return None, None
     try:
         query_result = index.query(vector=embedding, top_k=1, include_metadata=True)
         if query_result['matches']:
@@ -89,10 +101,9 @@ def check_similarity(embedding, threshold=0.6):
             if score > threshold:
                 return query_result['matches'][0]['metadata']['question'], score
     except Exception as e:
-        st.error("Failed to check similarity. Please try again later.")
         logging.error(f"Similarity check error: {e}")
     return None, None
-
+    
 # Create Quiz
 def create_quiz(quiz_data):
     try:
