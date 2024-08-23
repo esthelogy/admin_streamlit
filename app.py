@@ -34,9 +34,9 @@ try:
     pc = Pinecone(api_key=pinecone_api_key)
     index = pc.Index(index_name)
     
-    if index_name not in pc.list_indexes():
-        st.error(f"Index '{index_name}' not found. Please check the index name and try again.")
-        st.stop()
+    #if index_name not in pc.list_indexes():
+    #    st.error(f"Index '{index_name}' not found. Please check the index name and try again.")
+    #    st.stop()
     
     index_description = index.describe_index_stats()
     st.success(f"Successfully connected to Pinecone index: {index_name}")
