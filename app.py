@@ -32,35 +32,38 @@ index_name = "title-index"
 # API base URL
 api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
 
-# Pinecone initialization
-st.write("Pinecone initialization started")
+# Initialize Pinecone
 try:
-    logging.debug("Starting Pinecone initialization")
+    st.write("Initializing Pinecone...")
     pc = Pinecone(api_key=pinecone_api_key)
-    logging.debug("Pinecone client created")
     
+    # List all indexes
+    st.write("Listing Pinecone indexes...")
     all_indexes = pc.list_indexes()
-    logging.debug(f"All indexes: {all_indexes}")
+    st.write(f"Raw Pinecone response: {all_indexes}")
     
+    # Extract index names
     if isinstance(all_indexes, dict) and 'indexes' in all_indexes:
         index_names = [index['name'] for index in all_indexes['indexes']]
+    elif isinstance(all_indexes, list):
+        index_names = all_indexes
     else:
-        index_names = all_indexes if isinstance(all_indexes, list) else []
-    logging.debug(f"Extracted index names: {index_names}")
+        index_names = []
+    
+    st.write(f"Extracted index names: {index_names}")
     
     if index_name not in index_names:
-        logging.warning(f"Index '{index_name}' not found. Available indexes: {index_names}")
+        st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
     else:
         index = pc.Index(index_name)
-        logging.debug(f"Successfully connected to index: {index_name}")
-        index_stats = index.describe_index_stats()
-        logging.debug(f"Index stats: {index_stats}")
-
+        st.success(f"Successfully connected to Pinecone index: {index_name}")
+        index_description = index.describe_index_stats()
+        st.info(f"Index dimensions: {index_description['dimension']}")
+        st.info(f"Total vectors: {index_description['total_vector_count']}")
 except Exception as e:
-    logging.error(f"Error during Pinecone initialization: {str(e)}", exc_info=True)
     st.error(f"Failed to initialize Pinecone: {str(e)}")
-st.write("App initialization completed")
-logging.debug("Pinecone initialization complete")
+    st.write(f"Error type: {type(e).__name__}")
+    st.write(f"Error details: {str(e)}")
 
 # Initialize OpenAI (keep this part as is)
 try:
@@ -440,7 +443,6 @@ def show_esthetician_management():
     if st.button("Back to Admin Page"):
         st.session_state["page"] = "admin"
 
-# Show Login Page
 def show_login_page():
     st.title("Esthelogy Admin")
 
@@ -449,7 +451,9 @@ def show_login_page():
     api_url = f"{api_base_url}/user/login"
 
     if st.button("Login"):
+        st.write(f"Attempting to login with email: {username}")
         auth_response = authenticate(username, password, api_url)
+        st.write(f"Authentication response: {auth_response}")
         if auth_response:
             if auth_response.get("success") and auth_response.get("role") == "admin":
                 st.success("Login successful!")
@@ -463,16 +467,16 @@ def show_login_page():
         else:
             st.error("Login failed. Please check your credentials or API URL.")
 
-# Authenticate user
 def authenticate(username, password, api_url):
     payload = {"email": username, "password": password}
     try:
+        st.write(f"Sending authentication request to: {api_url}")
         response = requests.post(api_url, json=payload)
+        st.write(f"Authentication response status code: {response.status_code}")
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error("Failed to authenticate. Please check your credentials or API URL.")
-        logging.error(f"Authentication error: {e}")
+        st.error(f"Authentication error: {str(e)}")
         return None
 
 # Main function to control the app flow
