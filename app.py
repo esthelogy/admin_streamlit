@@ -8,14 +8,14 @@ from functools import lru_cache
 from typing import List, Dict, Any
 
 # Configure logging
-# logging.basicConfig(
-    # filename="app.log",
-    # level=logging.INFO,
-    # format="%(asctime)s %(levelname)s %(message)s"
-# )
+logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
 
 # Load API keys from Streamlit secrets
 try:
