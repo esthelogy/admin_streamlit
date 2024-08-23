@@ -36,21 +36,28 @@ api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
 try:
     st.write("Initializing Pinecone...")
     pc = Pinecone(api_key=pinecone_api_key)
-    
+
     # List all indexes
     st.write("Listing Pinecone indexes...")
     all_indexes = pc.list_indexes()
     st.write(f"Raw Pinecone response: {all_indexes}")
-    
-    # Extract index names
-    if isinstance(all_indexes, dict) and 'indexes' in all_indexes:
-        index_names = [index['name'] for index in all_indexes['indexes']]
+
+    # Debug: Log the type of all_indexes
+    st.write(f"Type of all_indexes: {type(all_indexes)}")
+
+    # Handle the IndexList object properly
+    index_names = []
+    if isinstance(all_indexes, list):
+        index_names = all_indexes
+    elif hasattr(all_indexes, 'indexes'):
+        # Access the 'indexes' property directly if it exists
+        index_names = [index.name for index in all_indexes.indexes]
     else:
-        st.warning(f"Unexpected format of index list: {all_indexes}")
-        index_names = []
-    
+        st.warning(f"Unexpected format of the index list: {all_indexes}")
+
     st.write(f"Extracted index names: {index_names}")
-    
+
+    # Check for the specific index
     if index_name not in index_names:
         st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
     else:
@@ -59,18 +66,13 @@ try:
         index_description = index.describe_index_stats()
         st.info(f"Index dimensions: {index_description['dimension']}")
         st.info(f"Total vectors: {index_description['total_vector_count']}")
+
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {str(e)}")
+    logging.error(f"Exception encountered: {e}", exc_info=True)
     st.write(f"Error type: {type(e).__name__}")
     st.write(f"Error details: {str(e)}")
 
-# Initialize OpenAI (keep this part as is)
-try:
-    client = OpenAI(api_key=openai_api_key)
-except Exception as e:
-    st.error(f"Failed to initialize OpenAI: {str(e)}")
-    logging.error(f"OpenAI initialization error: {e}")
-    st.stop()
 
 # Helper function to handle API responses
 def handle_api_response(response):
