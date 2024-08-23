@@ -37,9 +37,12 @@ try:
     all_indexes = pc.list_indexes()
     st.write(f"Available Pinecone indexes: {all_indexes}")
     
-    if index_name not in all_indexes:
-        st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {all_indexes}")
-        logging.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {all_indexes}")
+    # Extract index names from the response
+    index_names = [index['name'] for index in all_indexes['indexes']]
+    
+    if index_name not in index_names:
+        st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
+        logging.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
     else:
         index = pc.Index(index_name)
         # Verify the index details
