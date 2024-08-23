@@ -45,9 +45,8 @@ try:
     # Extract index names
     if isinstance(all_indexes, dict) and 'indexes' in all_indexes:
         index_names = [index['name'] for index in all_indexes['indexes']]
-    elif isinstance(all_indexes, list):
-        index_names = all_indexes
     else:
+        st.warning(f"Unexpected format of index list: {all_indexes}")
         index_names = []
     
     st.write(f"Extracted index names: {index_names}")
