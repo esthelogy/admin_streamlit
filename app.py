@@ -22,15 +22,22 @@ except KeyError as e:
     logging.error(f"Missing API key: {e}")
     st.stop()
 
-# Initialize Pinecone and OpenAI
+# Initialize Pinecone
 try:
     pc = Pinecone(api_key=pinecone_api_key)
-    client = OpenAI(api_key=openai_api_key)
     index_name = "questionnaire-index"
     index = pc.Index(index_name)
 except Exception as e:
-    st.error("Failed to initialize Pinecone or OpenAI. Please check your API keys.")
-    logging.error(f"Initialization error: {e}")
+    st.error(f"Failed to initialize Pinecone: {str(e)}")
+    logging.error(f"Pinecone initialization error: {e}")
+    st.stop()
+
+# Initialize OpenAI
+try:
+    client = OpenAI(api_key=openai_api_key)
+except Exception as e:
+    st.error(f"Failed to initialize OpenAI: {str(e)}")
+    logging.error(f"OpenAI initialization error: {e}")
     st.stop()
 
 # Caching for embedding generation to improve scalability
