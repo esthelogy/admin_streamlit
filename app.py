@@ -30,8 +30,8 @@ except KeyError as e:
 index_name = "title-index"
 
 # API base URL
-api_base_url = st.secrets["API_BASE_URL"]
-base_url = st.secrets["BASE_URL"]
+api_base_url = st.secrets["BASE_URL"]
+# base_url = st.secrets["BASE_URL"]
 
 # Initialize Pinecone
 try:
@@ -226,6 +226,7 @@ def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
             params={"page": page, "limit": limit},
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
+        print(f"{api_base_url}/admin/esthetician/approval_list")
         result = handle_api_response(response)
         if result and result.get("success"):
             return result.get("estheticians", [])
@@ -241,7 +242,7 @@ def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
 def approve_esthetician(esthetician_id: str) -> bool:
     try:
         response = requests.get(
-            f"{api_base_url}/admin/approve/esthetician/{esthetician_id}",
+            f"{api_base_url}/admin/approve_esthetician/{esthetician_id}",
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
         result = handle_api_response(response)
@@ -284,7 +285,7 @@ def show_quiz_management():
 
     if quizzes:
         for idx, quiz in enumerate(quizzes):
-            quiz_id = quiz.get('id', f'N/A_{idx}')
+            quiz_id = quiz.get('_id', f'N/A_{idx}')
             quiz_title = quiz.get('title', 'Untitled')
             st.write(f"Quiz ID: {quiz_id}, Title: {quiz_title}")
             col1, col2, col3 = st.columns(3)
@@ -423,11 +424,11 @@ def edit_quiz_page():
 
     if st.button("Save Changes"):
         updated_quiz = {
-            "id": quiz['id'],
+            "id": quiz['_id'],
             "title": new_title,
             "section": updated_sections
         }
-        if update_quiz(quiz['id'], updated_quiz):
+        if update_quiz(quiz['_id'], updated_quiz):
             st.success("Quiz updated successfully!")
             st.session_state.pop("editing_quiz")
             st.session_state["page"] = "quiz_management"
@@ -449,10 +450,10 @@ def show_esthetician_management():
     
     if estheticians:
         for esthetician in estheticians:
-            st.write(f"ID: {esthetician['id']}, Name: {esthetician['name']}, Email: {esthetician['email']}")
-            if esthetician['status'] != 'approved':
-                if st.button(f"Approve {esthetician['name']}", key=f"approve_{esthetician['id']}"):
-                    if approve_esthetician(esthetician['id']):
+            st.write(f"ID: {esthetician['_id']}, Name: {esthetician['full_name']}, license no: {esthetician['license_no']}")
+            if esthetician['esthetician_status'] != 'approved':
+                if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
+                    if approve_esthetician(esthetician['_id']):
                         st.experimental_rerun()
     else:
         st.write("No estheticians found or failed to fetch the list.")
