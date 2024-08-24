@@ -30,8 +30,8 @@ except KeyError as e:
 index_name = "title-index"
 
 # API base URL
-api_base_url = st.secrets["BASE_URL"]
-# base_url = st.secrets["BASE_URL"]
+api_base_url = st.secrets["API_BASE_URL"]
+base_url = st.secrets["BASE_URL"]
 
 # Initialize Pinecone
 try:
