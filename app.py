@@ -30,27 +30,35 @@ except KeyError as e:
 index_name = "title-index"
 
 # API base URL
-api_base_url = "https://dev-eciabackend.esthelogy.com/esthelogy/v1.0"
+api_base_url = st.secrets["API_BASE_URL"]
+base_url = st.secrets["BASE_URL"]
 
 # Initialize Pinecone
 try:
     st.write("Initializing Pinecone...")
     pc = Pinecone(api_key=pinecone_api_key)
-    
+
     # List all indexes
     st.write("Listing Pinecone indexes...")
     all_indexes = pc.list_indexes()
     st.write(f"Raw Pinecone response: {all_indexes}")
-    
-    # Extract index names
-    if isinstance(all_indexes, dict) and 'indexes' in all_indexes:
-        index_names = [index['name'] for index in all_indexes['indexes']]
+
+    # Debug: Log the type of all_indexes
+    st.write(f"Type of all_indexes: {type(all_indexes)}")
+
+    # Handle the IndexList object properly
+    index_names = []
+    if isinstance(all_indexes, list):
+        index_names = all_indexes
+    elif hasattr(all_indexes, 'indexes'):
+        # Access the 'indexes' property directly if it exists
+        index_names = [index.name for index in all_indexes.indexes]
     else:
-        st.warning(f"Unexpected format of index list: {all_indexes}")
-        index_names = []
-    
+        st.warning(f"Unexpected format of the index list: {all_indexes}")
+
     st.write(f"Extracted index names: {index_names}")
-    
+
+    # Check for the specific index
     if index_name not in index_names:
         st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
     else:
@@ -59,8 +67,10 @@ try:
         index_description = index.describe_index_stats()
         st.info(f"Index dimensions: {index_description['dimension']}")
         st.info(f"Total vectors: {index_description['total_vector_count']}")
+
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {str(e)}")
+    logging.error(f"Exception encountered: {e}", exc_info=True)
     st.write(f"Error type: {type(e).__name__}")
     st.write(f"Error details: {str(e)}")
 
@@ -212,10 +222,11 @@ def upload_puzzle(file, quiz_id: str):
 def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
     try:
         response = requests.get(
-            f"{api_base_url}/admin/esthetician/list",
+            f"{api_base_url}/admin/esthetician/approval_list",
             params={"page": page, "limit": limit},
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
+        print(f"{api_base_url}/admin/esthetician/approval_list")
         result = handle_api_response(response)
         if result and result.get("success"):
             return result.get("estheticians", [])
@@ -231,7 +242,7 @@ def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
 def approve_esthetician(esthetician_id: str) -> bool:
     try:
         response = requests.get(
-            f"{api_base_url}/admin/approve/esthetician/{esthetician_id}",
+            f"{api_base_url}/admin/approve_esthetician/{esthetician_id}",
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
         result = handle_api_response(response)
@@ -273,21 +284,23 @@ def show_quiz_management():
     st.write(f"Total Quizzes: {total_quizzes}")
 
     if quizzes:
-        for quiz in quizzes:
-            st.write(f"Quiz ID: {quiz['id']}, Title: {quiz['title']}")
+        for idx, quiz in enumerate(quizzes):
+            quiz_id = quiz.get('_id', f'N/A_{idx}')
+            quiz_title = quiz.get('title', 'Untitled')
+            st.write(f"Quiz ID: {quiz_id}, Title: {quiz_title}")
             col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button(f"Edit Quiz {quiz['id']}", key=f"edit_{quiz['id']}"):
+                if st.button(f"Edit Quiz {quiz_id}", key=f"edit_{quiz_id}"):
                     st.session_state["editing_quiz"] = quiz
                     st.session_state["page"] = "edit_quiz"
             with col2:
-                if st.button(f"Delete Quiz {quiz['id']}", key=f"delete_{quiz['id']}"):
-                    if delete_quiz(quiz['id']):
+                if st.button(f"Delete Quiz {quiz_id}", key=f"delete_{quiz_id}"):
+                    if delete_quiz(quiz_id):
                         st.experimental_rerun()
             with col3:
-                uploaded_file = st.file_uploader(f"Upload Puzzle for Quiz {quiz['id']}", key=f"upload_{quiz['id']}")
+                uploaded_file = st.file_uploader(f"Upload Puzzle for Quiz {quiz_id}", key=f"upload_{quiz_id}")
                 if uploaded_file is not None:
-                    if upload_puzzle(uploaded_file, quiz['id']):
+                    if upload_puzzle(uploaded_file, quiz_id):
                         st.experimental_rerun()
 
     if st.button("Create New Quiz"):
@@ -372,44 +385,50 @@ def edit_quiz_page():
     # Edit quiz title
     new_title = st.text_input("Quiz Title", value=quiz['title'])
 
+    # Check if 'section' key exists in the quiz data and is a string
+    if 'section' not in quiz or not isinstance(quiz['section'], str):
+        st.error("Quiz data is missing section or section is not a string.")
+        return
+
+    # Extract sections from the Pinecone data
+    sections = [{"name": quiz['section'], "subsections": [{"name": "Default Subsection", "questions": quiz.get('questions', [])}]}]
+
     # Edit sections and subsections
     updated_sections = []
-    for section in quiz['sections']:
+    for section in sections:
         st.subheader(f"Section: {section['name']}")
-        new_section_name = st.text_input("Section Name", value=section['name'], key=f"section_{section['id']}")
-        
+        new_section_name = st.text_input("Section Name", value=section['name'], key=f"section_{section['name']}")
+
         updated_subsections = []
         for subsection in section['subsections']:
             st.text(f"Subsection: {subsection['name']}")
-            new_subsection_name = st.text_input("Subsection Name", value=subsection['name'], key=f"subsection_{subsection['id']}")
-            
+            new_subsection_name = st.text_input("Subsection Name", value=subsection['name'], key=f"subsection_{subsection['name']}")
+
             updated_questions = []
-            for question in subsection['questions']:
-                new_question_text = st.text_area("Question", value=question['text'], key=f"question_{question['id']}")
-                if new_question_text != question['text']:
-                    updated_questions.append({"id": question['id'], "text": new_question_text})
-            
+            for idx, question in enumerate(subsection['questions']):
+                new_question_text = st.text_area("Question", value=question, key=f"question_{idx}")
+                if new_question_text != question:
+                    updated_questions.append({"id": idx, "text": new_question_text})
+
             if new_subsection_name != subsection['name'] or updated_questions:
                 updated_subsections.append({
-                    "id": subsection['id'],
                     "name": new_subsection_name,
                     "questions": updated_questions
                 })
-        
+
         if new_section_name != section['name'] or updated_subsections:
             updated_sections.append({
-                "id": section['id'],
                 "name": new_section_name,
                 "subsections": updated_subsections
             })
 
     if st.button("Save Changes"):
         updated_quiz = {
-            "id": quiz['id'],
+            "id": quiz['_id'],
             "title": new_title,
-            "sections": updated_sections
+            "section": updated_sections
         }
-        if update_quiz(quiz['id'], updated_quiz):
+        if update_quiz(quiz['_id'], updated_quiz):
             st.success("Quiz updated successfully!")
             st.session_state.pop("editing_quiz")
             st.session_state["page"] = "quiz_management"
@@ -431,10 +450,10 @@ def show_esthetician_management():
     
     if estheticians:
         for esthetician in estheticians:
-            st.write(f"ID: {esthetician['id']}, Name: {esthetician['name']}, Email: {esthetician['email']}")
-            if esthetician['status'] != 'approved':
-                if st.button(f"Approve {esthetician['name']}", key=f"approve_{esthetician['id']}"):
-                    if approve_esthetician(esthetician['id']):
+            st.write(f"ID: {esthetician['_id']}, Name: {esthetician['full_name']}, license no: {esthetician['license_no']}")
+            if esthetician['esthetician_status'] != 'approved':
+                if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
+                    if approve_esthetician(esthetician['_id']):
                         st.experimental_rerun()
     else:
         st.write("No estheticians found or failed to fetch the list.")
@@ -442,6 +461,7 @@ def show_esthetician_management():
     if st.button("Back to Admin Page"):
         st.session_state["page"] = "admin"
 
+# Show Login Page
 def show_login_page():
     st.title("Esthelogy Admin")
 
@@ -466,6 +486,7 @@ def show_login_page():
         else:
             st.error("Login failed. Please check your credentials or API URL.")
 
+# Authenticate function
 def authenticate(username, password, api_url):
     payload = {"email": username, "password": password}
     try:
