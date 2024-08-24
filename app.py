@@ -296,12 +296,12 @@ def show_quiz_management():
             with col2:
                 if st.button(f"Delete Quiz {quiz_id}", key=f"delete_{quiz_id}"):
                     if delete_quiz(quiz_id):
-                        st.experimental_rerun()
+                        st.experimental_set_query_params(rerun=True)
             with col3:
                 uploaded_file = st.file_uploader(f"Upload Puzzle for Quiz {quiz_id}", key=f"upload_{quiz_id}")
                 if uploaded_file is not None:
                     if upload_puzzle(uploaded_file, quiz_id):
-                        st.experimental_rerun()
+                        st.experimental_set_query_params(rerun=True)
 
     if st.button("Create New Quiz"):
         st.session_state["page"] = "create_quiz"
@@ -454,7 +454,7 @@ def show_esthetician_management():
             if esthetician['esthetician_status'] != 'approved':
                 if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
                     if approve_esthetician(esthetician['_id']):
-                        st.experimental_rerun()
+                        st.experimental_set_query_params(rerun=True)
     else:
         st.write("No estheticians found or failed to fetch the list.")
 
@@ -499,10 +499,28 @@ def authenticate(username, password, api_url):
         st.error(f"Authentication error: {str(e)}")
         return None
 
+# Define Navigation Menu
+def show_navigation_menu():
+    st.sidebar.title("Navigation")
+    if st.sidebar.button("Admin Page", key="nav_admin_page"):
+        st.session_state["page"] = "admin"
+    if st.sidebar.button("Esthetician Management", key="nav_esthetician_management"):
+        st.session_state["page"] = "esthetician_management"
+    if st.sidebar.button("Quiz Management", key="nav_quiz_management"):
+        st.session_state["page"] = "quiz_management"
+    if st.sidebar.button("Create Quiz", key="nav_create_quiz"):
+        st.session_state["page"] = "create_quiz"
+    if st.sidebar.button("Logout", key="nav_logout"):
+        st.session_state.clear()
+        st.session_state["page"] = "login"
+        st.success("You have been logged out.")
+
 # Main function to control the app flow
 def main():
     if "page" not in st.session_state:
         st.session_state["page"] = "login"
+
+    show_navigation_menu()  # Display the navigation menu
 
     if st.session_state["page"] == "login":
         show_login_page()
