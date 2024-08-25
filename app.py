@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import os
+import re
 import logging
 from openai import OpenAI
 from pinecone import Pinecone
@@ -151,7 +152,12 @@ def get_all_quizzes(page: int = 1, limit: int = 10):
         )
         result = handle_api_response(response)
         if result and result.get("success"):
-            return result.get("quizzes", []), result.get("total", 0)
+            quizzes = result.get("quizzes", [])
+            #total = result.get("total", 0)
+            total = len(quizzes)  # Count the number of quizzes
+            logging.info(f"Fetched quizzes: {quizzes}")
+            logging.info(f"Total quizzes: {total}")
+            return quizzes, total
         else:
             st.error("Failed to fetch quizzes. Please try again later.")
     except Exception as e:
@@ -284,8 +290,8 @@ def show_quiz_management():
     st.write(f"Total Quizzes: {total_quizzes}")
 
     if quizzes:
-        for idx, quiz in enumerate(quizzes):
-            quiz_id = quiz.get('_id', f'N/A_{idx}')
+        for quiz in quizzes:
+            quiz_id = quiz.get('_id', 'N/A')
             quiz_title = quiz.get('title', 'Untitled')
             st.write(f"Quiz ID: {quiz_id}, Title: {quiz_title}")
             col1, col2, col3 = st.columns(3)
@@ -447,14 +453,18 @@ def show_esthetician_management():
     limit = st.number_input("Estheticians per page", min_value=1, max_value=100, value=10)
 
     estheticians = list_estheticians(page, limit)
-    
+
     if estheticians:
         for esthetician in estheticians:
-            st.write(f"ID: {esthetician['_id']}, Name: {esthetician['full_name']}, license no: {esthetician['license_no']}")
+            st.write(f"ID: {esthetician['_id']}")
+            st.write(f"Name: {esthetician['full_name']}, License No: {esthetician['license_no']}")
+            st.write(f"Email: {esthetician['email']}, Status: {esthetician['esthetician_status']}")
+            st.write(f"License File: {esthetician['license_file']['data']}")
             if esthetician['esthetician_status'] != 'approved':
                 if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
                     if approve_esthetician(esthetician['_id']):
-                        st.experimental_set_query_params(rerun=True)
+                        st.query_params.update(rerun=True)
+            st.markdown("---")  # Add a horizontal line
     else:
         st.write("No estheticians found or failed to fetch the list.")
 
@@ -515,8 +525,53 @@ def show_navigation_menu():
         st.session_state["page"] = "login"
         st.success("You have been logged out.")
 
+# Assuming `fetch_quizzes` is a function that fetches quizzes
+def fetch_quizzes():
+    # This function should return a list of quizzes
+    return [
+        {'_id': '66c8ab455b1f4a459bb30672', 'title_code': 'basic_information_multiple_choices', 'title': 'Basic Information Multiple Choices', 'section': 'On-boarding Quiz', 'status': 'not_started'},
+        # Add other quizzes here
+    ]
 # Main function to control the app flow
 def main():
+    #for debugging
+    # Sample log entry
+    log_entry = "2024-08-25 04:11:52,951 INFO Total quizzes: 0"
+
+    # Define the regular expression pattern
+    pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) (\w+) (.+)'
+
+    # Use re.findall to extract information
+    matches = re.findall(pattern, log_entry)
+
+    # Process the extracted information
+    for match in matches:
+        timestamp, log_level, message = match
+        print(f"Timestamp: {timestamp}")
+        print(f"Log Level: {log_level}")
+        print(f"Message: {message}")
+    # Fetch quizzes
+    quizzes = fetch_quizzes()
+
+    # Ensure quizzes is a list
+    if isinstance(quizzes, list):
+        # Method 1: Using len()
+        total_quizzes = len(quizzes)
+        logging.info(f"Total quizzes using len(): {total_quizzes}")
+
+        # Method 2: Using a loop to count elements
+        total_quizzes_loop = 0
+        for quiz in quizzes:
+            total_quizzes_loop += 1
+        logging.info(f"Total quizzes using loop: {total_quizzes_loop}")
+
+        # Method 3: Using sum() with a generator expression
+        total_quizzes_sum = sum(1 for _ in quizzes)
+        logging.info(f"Total quizzes using sum(): {total_quizzes_sum}")
+    else:
+        logging.error("Fetched quizzes is not a list.")
+
+    # Original code
     if "page" not in st.session_state:
         st.session_state["page"] = "login"
 
@@ -536,4 +591,5 @@ def main():
         show_esthetician_management()
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     main()
