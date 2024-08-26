@@ -245,21 +245,23 @@ def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
         return []
 
 # Approve Esthetician
-def approve_esthetician(esthetician_id: str) -> bool:
+def approve_esthetician(esthetician_id: str, is_approved: bool = True) -> bool:
     try:
-        response = requests.get(
+        response = requests.put(
             f"{api_base_url}/admin/approve_esthetician/{esthetician_id}",
+            params={"is_approved": is_approved},
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
         result = handle_api_response(response)
         if result and result.get("success"):
-            st.success(f"Esthetician {esthetician_id} approved successfully.")
+            status = "approved" if is_approved else "rejected"
+            st.success(f"Esthetician {esthetician_id} {status} successfully.")
             return True
         else:
-            st.error(f"Failed to approve esthetician {esthetician_id}.")
+            st.error(f"Failed to update esthetician {esthetician_id}.")
             return False
     except Exception as e:
-        st.error(f"An error occurred while approving esthetician {esthetician_id}.")
+        st.error(f"An error occurred while updating esthetician {esthetician_id}.")
         logging.error(f"Error in approve_esthetician: {e}")
         return False
 
@@ -461,9 +463,15 @@ def show_esthetician_management():
             st.write(f"Email: {esthetician['email']}, Status: {esthetician['esthetician_status']}")
             st.write(f"License File: {esthetician['license_file']['data']}")
             if esthetician['esthetician_status'] != 'approved':
-                if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
-                    if approve_esthetician(esthetician['_id']):
-                        st.query_params.update(rerun=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
+                        if approve_esthetician(esthetician['_id'], is_approved=True):
+                            st.experimental_rerun()
+                with col2:
+                    if st.button(f"Reject {esthetician['full_name']}", key=f"reject_{esthetician['_id']}"):
+                        if approve_esthetician(esthetician['_id'], is_approved=False):
+                            st.experimental_rerun()
             st.markdown("---")  # Add a horizontal line
     else:
         st.write("No estheticians found or failed to fetch the list.")
