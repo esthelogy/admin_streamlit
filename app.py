@@ -36,11 +36,11 @@ base_url = st.secrets["BASE_URL"]
 
 # Initialize Pinecone
 try:
-    st.write("Initializing Pinecone...")
+    logging.info("Initializing Pinecone...")
     pc = Pinecone(api_key=pinecone_api_key)
 
     # List all indexes
-    st.write("Listing Pinecone indexes...")
+    logging.info("Listing Pinecone indexes...")
     all_indexes = pc.list_indexes()
     logging.info(f"Raw Pinecone response: {all_indexes}")
 
@@ -148,7 +148,7 @@ def create_quiz(quiz_data):
     return None
 
 # Fetch All Quizzes
-def get_all_quizzes(page: int = 1, size: int = 10):
+def get_all_quizzes(page: int = 1, size: int = 50):
     url = f"{api_base_url}/quiz/list"
     params = {"page": page, "size": size}
     headers = {"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
@@ -201,16 +201,16 @@ def update_quiz(quiz_id: str, quiz_data: dict):
         )
         logging.info(f"Response status code: {response.status_code}")
         logging.info(f"Response content: {response.content}")
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            st.success(f"Quiz {quiz_id} updated successfully!")
-            return result.get("quiz")
+        if response.status_code == 200:
+            st.success("Quiz updated successfully!")
+            return response.json()
         else:
-            st.error(f"Failed to update quiz {quiz_id}: {result.get('message', 'Unknown error')}")
+            st.error(f"Failed to update quiz: {response.status_code}")
+            return None
     except Exception as e:
-        st.error(f"Failed to update quiz {quiz_id}. Please try again later.")
         logging.error(f"Error in update_quiz: {e}")
-    return None
+        st.error(f"An error occurred: {e}")
+        return None
 
 # Delete Quiz
 def delete_quiz(quiz_id: str):
@@ -325,16 +325,16 @@ def show_admin_page():
         st.success("You have been logged out.")
 
 
-# Show Quiz Management Page
+# Show Quiz Management
 def show_quiz_management():
-    st.subheader("Quiz Management")
-
+    st.title("Quiz Management")
     page = st.number_input("Page", min_value=1, value=1)
-    size = st.number_input("Quizzes per page", min_value=1, max_value=100, value=10)
+    size = st.number_input("Quizzes per page", min_value=1, value=50)
 
     quizzes = get_all_quizzes(page, size)
+
     if quizzes:
-        for quiz in quizzes:
+        for quiz_idx, quiz in enumerate(quizzes):
             quiz_id = quiz.get("_id")
             st.write(f"ID: {quiz_id}")
             if quiz_id:
@@ -345,18 +345,32 @@ def show_quiz_management():
 
                 st.markdown(f"### {title}")
                 st.markdown(f"**Section**: {section}")
-                # st.write(f"Detail: {quiz_details}")
 
-                for question in questions:
-                    st.markdown(f"**Question**: {question.get('question', 'N/A')}")
+                edited_questions = []
+                for q_idx, question in enumerate(questions):
+                    question_text = st.text_area(f"Question: {question.get('question', 'N/A')}", value=question.get('question', 'N/A'), key=f"{title}_question_{q_idx}")
                     options = question.get("options", [])
-                    for option in options:
-                        st.markdown(f"- {option}")
+                    edited_options = [st.text_area(f"Option {i+1}", value=option, key=f"{title}_question_{q_idx}_option_{i}") for i, option in enumerate(options)]
+                    edited_questions.append({
+                        "question_id": question.get("question_id"),
+                        "question": question_text,
+                        "options": edited_options
+                    })
 
-                st.markdown("---")
+                if st.button("Save", key=f"save_{title}_{quiz_idx}"):
+                    updated_quiz = {
+                        "title": title,
+                        "section": section,
+                        "questions": edited_questions
+                    }
+                    update_quiz(quiz_id, updated_quiz)
 
-    if st.button("Back to Admin Page"):
+                if st.button("Discard", key=f"discard_{title}_{quiz_idx}"):
+                    st.query_params.update(rerun=True)
+
+    if st.button("Back to Admin Page", key="back_to_admin"):
         st.session_state["page"] = "admin"
+
 
 # Create Quiz Page
 def create_quiz_page():
