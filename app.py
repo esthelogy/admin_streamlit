@@ -329,7 +329,7 @@ def show_admin_page():
 def show_quiz_management():
     st.title("Quiz Management")
     page = st.number_input("Page", min_value=1, value=1)
-    size = st.number_input("Quizzes per page", min_value=1, value=50)
+    size = st.number_input("Quizzes per page", min_value=1, value=10)
 
     quizzes = get_all_quizzes(page, size)
 
