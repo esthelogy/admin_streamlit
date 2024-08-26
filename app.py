@@ -245,25 +245,26 @@ def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
         return []
 
 # Approve Esthetician
-def approve_esthetician(esthetician_id: str, is_approved: bool = True) -> bool:
+def approve_esthetician(esthetician_id: str, is_approved: bool = True) -> str:
     try:
-        response = requests.put(
+        is_approved_str = "true" if is_approved else "false"
+        response = requests.get(
             f"{api_base_url}/admin/approve_esthetician/{esthetician_id}",
-            params={"is_approved": is_approved},
+            params={"is_approved": is_approved_str},
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
         result = handle_api_response(response)
         if result and result.get("success"):
             status = "approved" if is_approved else "rejected"
             st.success(f"Esthetician {esthetician_id} {status} successfully.")
-            return True
+            return "true"
         else:
             st.error(f"Failed to update esthetician {esthetician_id}.")
-            return False
+            return "false"
     except Exception as e:
         st.error(f"An error occurred while updating esthetician {esthetician_id}.")
         logging.error(f"Error in approve_esthetician: {e}")
-        return False
+        return "false"
 
 # Show Admin Page
 def show_admin_page():
@@ -467,11 +468,11 @@ def show_esthetician_management():
                 with col1:
                     if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
                         if approve_esthetician(esthetician['_id'], is_approved=True):
-                            st.experimental_rerun()
+                            st.query_params.update(rerun=True)
                 with col2:
                     if st.button(f"Reject {esthetician['full_name']}", key=f"reject_{esthetician['_id']}"):
                         if approve_esthetician(esthetician['_id'], is_approved=False):
-                            st.experimental_rerun()
+                            st.query_params.update(rerun=True)
             st.markdown("---")  # Add a horizontal line
     else:
         st.write("No estheticians found or failed to fetch the list.")
