@@ -42,10 +42,10 @@ try:
     # List all indexes
     st.write("Listing Pinecone indexes...")
     all_indexes = pc.list_indexes()
-    st.write(f"Raw Pinecone response: {all_indexes}")
+    logging.info(f"Raw Pinecone response: {all_indexes}")
 
     # Debug: Log the type of all_indexes
-    st.write(f"Type of all_indexes: {type(all_indexes)}")
+    logging.info(f"Type of all_indexes: {type(all_indexes)}")
 
     # Handle the IndexList object properly
     index_names = []
@@ -57,17 +57,17 @@ try:
     else:
         st.warning(f"Unexpected format of the index list: {all_indexes}")
 
-    st.write(f"Extracted index names: {index_names}")
+    logging.info(f"Extracted index names: {index_names}")
 
     # Check for the specific index
     if index_name not in index_names:
         st.warning(f"Index '{index_name}' not found in Pinecone. Available indexes are: {index_names}")
     else:
         index = pc.Index(index_name)
-        st.success(f"Successfully connected to Pinecone index: {index_name}")
+        logging.info(f"Successfully connected to Pinecone index: {index_name}")
         index_description = index.describe_index_stats()
-        st.info(f"Index dimensions: {index_description['dimension']}")
-        st.info(f"Total vectors: {index_description['total_vector_count']}")
+        logging.info(f"Index dimensions: {index_description['dimension']}")
+        logging.info(f"Total vectors: {index_description['total_vector_count']}")
 
 except Exception as e:
     st.error(f"Failed to initialize Pinecone: {str(e)}")
@@ -90,11 +90,14 @@ def handle_api_response(response):
     except requests.exceptions.HTTPError as http_err:
         st.error(f"HTTP error occurred: {response.json().get('message', str(http_err))}")
         logging.error(f"HTTP error occurred: {http_err}")
+        logging.info(f"Response content: {response.content}")
         return None
     except Exception as err:
         st.error(f"An error occurred: {err}")
         logging.error(f"Unexpected error: {err}")
+        logging.info(f"Response content: {response.content}")
         return None
+    logging.info(f"Successful API Response content: {response.content}")
     return response.json()
 
 # Caching for embedding generation to improve scalability
@@ -131,6 +134,8 @@ def create_quiz(quiz_data):
             json=quiz_data,
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
         result = handle_api_response(response)
         if result and result.get("success"):
             st.success("Quiz created successfully!")
@@ -143,27 +148,48 @@ def create_quiz(quiz_data):
     return None
 
 # Fetch All Quizzes
-def get_all_quizzes(page: int = 1, limit: int = 10):
+def get_all_quizzes(page: int = 1, size: int = 10):
+    url = f"{api_base_url}/quiz/list"
+    params = {"page": page, "size": size}
+    headers = {"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
     try:
-        response = requests.get(
-            f"{api_base_url}/quiz/list",
-            params={"page": page, "limit": limit},
-            headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
-        )
-        result = handle_api_response(response)
-        if result and result.get("success"):
-            quizzes = result.get("quizzes", [])
-            #total = result.get("total", 0)
-            total = len(quizzes)  # Count the number of quizzes
-            logging.info(f"Fetched quizzes: {quizzes}")
-            logging.info(f"Total quizzes: {total}")
-            return quizzes, total
+        response = requests.get(url, params=params, headers=headers)
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("quizzes", {}).get("items", [])
+        elif response.status_code == 404:
+            logging.error("Quizzes not found")
+        elif response.status_code == 401:
+            logging.error("Not authenticated")
         else:
-            st.error("Failed to fetch quizzes. Please try again later.")
+            logging.error(f"Unexpected error: {response.status_code}")
     except Exception as e:
-        st.error("Failed to fetch quizzes. Please try again later.")
         logging.error(f"Error in get_all_quizzes: {e}")
-    return [], 0
+        st.error(f"An error occurred: {e}")
+    return []
+
+# Fetch quiz details by ID
+def get_quiz_details(quiz_id: str):
+    url = f"{api_base_url}/quiz/{quiz_id}"
+    headers = {
+        "Authorization": f"Bearer {st.session_state.get('auth_token', '')}",
+        "Accept": "application/json"
+    }
+    try:
+        response = requests.get(url, headers=headers)
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
+        if response.status_code == 200:
+            return response.json().get("quiz", {})
+        else:
+            st.error(f"Failed to fetch quiz details: {response.status_code}")
+            return {}
+    except Exception as e:
+        logging.error(f"Error in get_quiz_details: {e}")
+        st.error(f"An error occurred: {e}")
+        return {}
 
 # Update Quiz
 def update_quiz(quiz_id: str, quiz_data: dict):
@@ -173,6 +199,8 @@ def update_quiz(quiz_id: str, quiz_data: dict):
             json=quiz_data,
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
         result = handle_api_response(response)
         if result and result.get("success"):
             st.success(f"Quiz {quiz_id} updated successfully!")
@@ -191,6 +219,8 @@ def delete_quiz(quiz_id: str):
             f"{api_base_url}/quiz/{quiz_id}",
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
         result = handle_api_response(response)
         if result and result.get("success"):
             st.success(f"Quiz {quiz_id} deleted successfully!")
@@ -213,6 +243,8 @@ def upload_puzzle(file, quiz_id: str):
             data=data,
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
         result = handle_api_response(response)
         if result and result.get("success"):
             st.success("Puzzle uploaded successfully!")
@@ -233,6 +265,8 @@ def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
         print(f"{api_base_url}/admin/esthetician/approval_list")
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
         result = handle_api_response(response)
         if result and result.get("success"):
             return result.get("estheticians", [])
@@ -245,14 +279,22 @@ def list_estheticians(page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
         return []
 
 # Approve Esthetician
-def approve_esthetician(esthetician_id: str, is_approved: bool = True) -> str:
+def approve_esthetician(esthetician_id: str, is_approved: bool = True, reason_for_rejection: str = "N/A") -> str:
     try:
+        st.write(f"Reason for rejection: {reason_for_rejection}")
         is_approved_str = "true" if is_approved else "false"
-        response = requests.get(
+        request_body = {
+            "is_approved": is_approved_str,
+            "reason_for_rejection": reason_for_rejection if not is_approved else "N/A"
+        }
+        logging.info(f"Request body for approving esthetician: {request_body}")
+        response = requests.put(
             f"{api_base_url}/admin/approve_esthetician/{esthetician_id}",
-            params={"is_approved": is_approved_str},
+            json=request_body,
             headers={"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
         )
+        logging.info(f"Response status code: {response.status_code}")
+        logging.info(f"Response content: {response.content}")
         result = handle_api_response(response)
         if result and result.get("success"):
             status = "approved" if is_approved else "rejected"
@@ -282,38 +324,36 @@ def show_admin_page():
         st.session_state["page"] = "login"
         st.success("You have been logged out.")
 
+
 # Show Quiz Management Page
 def show_quiz_management():
     st.subheader("Quiz Management")
 
     page = st.number_input("Page", min_value=1, value=1)
-    limit = st.number_input("Quizzes per page", min_value=1, max_value=100, value=10)
+    size = st.number_input("Quizzes per page", min_value=1, max_value=100, value=10)
 
-    quizzes, total_quizzes = get_all_quizzes(page, limit)
-    st.write(f"Total Quizzes: {total_quizzes}")
-
+    quizzes = get_all_quizzes(page, size)
     if quizzes:
         for quiz in quizzes:
-            quiz_id = quiz.get('_id', 'N/A')
-            quiz_title = quiz.get('title', 'Untitled')
-            st.write(f"Quiz ID: {quiz_id}, Title: {quiz_title}")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button(f"Edit Quiz {quiz_id}", key=f"edit_{quiz_id}"):
-                    st.session_state["editing_quiz"] = quiz
-                    st.session_state["page"] = "edit_quiz"
-            with col2:
-                if st.button(f"Delete Quiz {quiz_id}", key=f"delete_{quiz_id}"):
-                    if delete_quiz(quiz_id):
-                        st.experimental_set_query_params(rerun=True)
-            with col3:
-                uploaded_file = st.file_uploader(f"Upload Puzzle for Quiz {quiz_id}", key=f"upload_{quiz_id}")
-                if uploaded_file is not None:
-                    if upload_puzzle(uploaded_file, quiz_id):
-                        st.experimental_set_query_params(rerun=True)
+            quiz_id = quiz.get("_id")
+            st.write(f"ID: {quiz_id}")
+            if quiz_id:
+                quiz_details = get_quiz_details(quiz_id)
+                title = quiz_details.get("title", "N/A")
+                section = quiz_details.get("section", "N/A")
+                questions = quiz_details.get("questions", [])
 
-    if st.button("Create New Quiz"):
-        st.session_state["page"] = "create_quiz"
+                st.markdown(f"### {title}")
+                st.markdown(f"**Section**: {section}")
+                # st.write(f"Detail: {quiz_details}")
+
+                for question in questions:
+                    st.markdown(f"**Question**: {question.get('question', 'N/A')}")
+                    options = question.get("options", [])
+                    for option in options:
+                        st.markdown(f"- {option}")
+
+                st.markdown("---")
 
     if st.button("Back to Admin Page"):
         st.session_state["page"] = "admin"
@@ -467,11 +507,12 @@ def show_esthetician_management():
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button(f"Approve {esthetician['full_name']}", key=f"approve_{esthetician['_id']}"):
-                        if approve_esthetician(esthetician['_id'], is_approved=True):
+                        if approve_esthetician(esthetician['_id'], is_approved=True) == "true":
                             st.query_params.update(rerun=True)
                 with col2:
+                    reason_for_rejection = st.text_input(f"Reason for rejecting {esthetician['full_name']}", key=f"reason_{esthetician['_id']}")
                     if st.button(f"Reject {esthetician['full_name']}", key=f"reject_{esthetician['_id']}"):
-                        if approve_esthetician(esthetician['_id'], is_approved=False):
+                        if approve_esthetician(esthetician['_id'], is_approved=False, reason_for_rejection=reason_for_rejection) == "true":
                             st.query_params.update(rerun=True)
             st.markdown("---")  # Add a horizontal line
     else:
@@ -489,9 +530,9 @@ def show_login_page():
     api_url = f"{api_base_url}/user/login"
 
     if st.button("Login"):
-        st.write(f"Attempting to login with email: {username}")
+        logging.info(f"Attempting to login with email: {username}")
         auth_response = authenticate(username, password, api_url)
-        st.write(f"Authentication response: {auth_response}")
+        logging.info(f"Authentication response: {auth_response}")
         if auth_response:
             if auth_response.get("success") and auth_response.get("role") == "admin":
                 st.success("Login successful!")
