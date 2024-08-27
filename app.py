@@ -545,6 +545,8 @@ def show_esthetician_management():
             st.write(f"Name: {esthetician['full_name']}, License No: {esthetician['license_no']}")
             st.write(f"Email: {esthetician['email']}, Status: {esthetician['esthetician_status']}")
             st.write(f"License File: {esthetician['license_file']['data']}")
+            if "reason_for_rejection" in esthetician and esthetician["reason_for_rejection"] != "N/A":
+                st.write(f"Reason for Rejection: {esthetician['reason_for_rejection']}")
             if esthetician['esthetician_status'] != 'approved':
                 col1, col2 = st.columns(2)
                 with col1:
