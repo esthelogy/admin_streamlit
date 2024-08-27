@@ -351,11 +351,39 @@ def show_quiz_management():
                     question_text = st.text_area(f"Question: {question.get('question', 'N/A')}", value=question.get('question', 'N/A'), key=f"{title}_question_{q_idx}")
                     options = question.get("options", [])
                     edited_options = [st.text_area(f"Option {i+1}", value=option, key=f"{title}_question_{q_idx}_option_{i}") for i, option in enumerate(options)]
-                    edited_questions.append({
-                        "question_id": question.get("question_id"),
-                        "question": question_text,
-                        "options": edited_options
-                    })
+
+                    # Delete question button
+                    if st.button(f"Delete Question {q_idx + 1}", key=f"delete_{title}_{q_idx}"):
+                        st.session_state['delete_confirm'] = {
+                            "quiz_id": quiz_id,
+                            "question_idx": q_idx
+                        }
+
+                    # Check if a delete confirmation is required
+                    if 'delete_confirm' in st.session_state and st.session_state['delete_confirm']['quiz_id'] == quiz_id and st.session_state['delete_confirm']['question_idx'] == q_idx:
+                        st.warning(f"Are you sure you want to delete this question: '{question_text}'?")
+                        if st.button("Confirm Delete", key=f"confirm_delete_{title}_{q_idx}"):
+                            st.session_state.pop('delete_confirm')
+                            # Remove the question from the list
+                            questions.pop(q_idx)
+                            updated_quiz = {
+                                "title": title,
+                                "section": section,
+                                "questions": questions
+                            }
+                            update_quiz(quiz_id, updated_quiz)
+                            st.query_params.update(rerun=True)
+
+                        if st.button("Cancel", key=f"cancel_delete_{title}_{q_idx}"):
+                            st.session_state.pop('delete_confirm')
+
+                    # Add the question to the list only if it wasn't deleted
+                    if not (st.session_state.get('delete_confirm', {}).get('question_idx') == q_idx):
+                        edited_questions.append({
+                            "question_id": question.get("question_id"),
+                            "question": question_text,
+                            "options": edited_options
+                        })
 
                 if st.button("Save", key=f"save_{title}_{quiz_idx}"):
                     updated_quiz = {
