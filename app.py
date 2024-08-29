@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import os
 import re
 import logging
 from openai import OpenAI
@@ -324,6 +323,274 @@ def show_admin_page():
         st.session_state["page"] = "login"
         st.success("You have been logged out.")
 
+def analyze_skin_condition(text_input: str, image_file=None):
+    url = f"{api_base_url}/ai/analyze_skin"
+    
+    if image_file is not None:
+        files = {
+            'image': image_file
+        }
+        data = {
+            'text_input': text_input
+        }
+        response = requests.post(url, files=files, data=data)
+    else:
+        payload = {
+            "text_input": text_input
+        }
+        response = requests.post(url, json=payload)
+
+    print(response.text)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return None
+
+def get_quiz_recommendations(skin_type: str, condition: str):
+    url = f"{api_base_url}/ai/diary_quiz_recommendation"
+    payload = {
+        "skin_type": skin_type,
+        "condition": condition
+    }
+    headers = {"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+
+    response = requests.post(url, json=payload, headers=headers)
+
+    print(response.text)
+    if response.status_code == 200:
+        return response.json().get('quiz_list', [])
+    else:
+        print(f"Failed to fetch quiz recommendations: {response.status_code} - {response.text}")
+        return None
+    
+def start_quiz(quiz_id: str):
+    print("Starting Quiz")
+    try:
+        url = f"{api_base_url}/quiz/start_quiz"
+        params = {"quiz_id": quiz_id}  
+        headers = {"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 200:
+            quiz_details = response.json().get('question_details', {})
+            logging.info(f"Quiz started successfully: {quiz_details}")
+            return quiz_details
+        else:
+            st.error(f"Failed to start quiz: {response.status_code} - {response.text}")
+            logging.error(f"Failed to start quiz: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(str(e))
+
+def fetch_next_question(quiz_id: str, question_id: str, response: str, response_time: int):
+    url = f"{api_base_url}/quiz/fetch_next"
+    payload = {
+        "quiz_id": quiz_id,
+        "question_id": question_id,
+        "response": response,
+        "response_time": response_time
+    }
+    headers = {"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        return response.json().get('question_details', {})
+    else:
+        st.error(f"Failed to fetch next question: {response.status_code} - {response.text}")
+        return None
+
+def submit_quiz(quiz_id: str):
+    url = f"{api_base_url}/quiz/submit"
+    payload = {"quiz_id": quiz_id}
+    headers = {"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Failed to submit quiz: {response.status_code} - {response.text}")
+        return None
+
+def show_recommendations_page():
+    st.title("Quiz Recommendations")
+
+    if 'quiz_recommendations' in st.session_state and st.session_state['quiz_recommendations']:
+        st.subheader("Here are your quiz recommendations based on your skin analysis:")
+        for recommendation in st.session_state['quiz_recommendations']:
+            st.write(f"- {recommendation}")
+    else:
+        st.info("No recommendations available. Please complete the skin analysis first.")
+
+    if st.button("Back to Main"):
+        st.session_state["page"] = "main"
+
+def get_quiz_details(quiz_id: str):
+    url = f"{api_base_url}/quiz/{quiz_id}"
+    headers = {"Authorization": f"Bearer {st.session_state.get('auth_token', '')}"}
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200 and response.json().get('success'):
+        return response.json().get('quiz', {})
+    else:
+        st.error(f"Failed to fetch quiz details: {response.status_code} - {response.text}")
+        return None
+    
+def show_quiz_details_page(quiz_id: str):
+    st.title("Quiz Details")
+
+    # Fetch the quiz details using the provided API
+    quiz = get_quiz_details(quiz_id)
+
+    if quiz:
+        st.subheader(quiz.get("title", "Quiz Title"))
+        st.write(f"Section: {quiz.get('section', 'N/A')}")
+
+        questions = quiz.get("questions", [])
+        if questions:
+            for idx, question in enumerate(questions):
+                st.markdown(f"**Question {idx + 1}:** {question.get('question', 'N/A')}")
+                options = question.get("options", [])
+                for option in options:
+                    st.radio(f"Question {idx + 1}", options, key=f"option_{question['question_id']}_{option}")
+                st.markdown("---")
+        else:
+            st.write("No questions available in this quiz.")
+    else:
+        st.error("Failed to retrieve quiz details.")
+
+def show_chatroom_page():
+    st.title("My Skin Diary")
+
+    st.subheader("How is your skin today?")
+    diary_entry = st.text_area("Share your observation, thought, and feeling about your skin today")
+    media_file = st.file_uploader("Upload a picture to help us understand better", type=["jpg", "jpeg", "png"])
+
+    if st.button("Analyze Skin"):
+        if diary_entry or media_file:
+            response = analyze_skin_condition(diary_entry, media_file)
+
+            if response and response.get("success"):
+                detail = response.get("detail", {})
+                skin_type = detail.get('skin_type')
+                condition = detail.get('condition')
+
+                # Store skin analysis results and recommendations in session state
+                st.session_state['skin_type'] = skin_type
+                st.session_state['condition'] = condition
+                st.session_state['skin_recommendations'] = detail.get("recommendations", [])
+
+                st.subheader("Skin Analysis Results")
+                st.write(f"**Skin Type:** {skin_type}")
+                st.write(f"**Condition:** {condition}")
+
+                # Call the quiz recommendations API with the auth token
+                quiz_list = get_quiz_recommendations(skin_type, condition)
+                st.session_state['quiz_list'] = quiz_list
+
+                st.subheader("Quiz Recommendations")
+                if quiz_list:
+                    for i, quiz in enumerate(quiz_list):
+                        st.markdown("---")
+                        st.write(f"ID: {quiz['quiz_id']}")
+                        st.write(f"**{quiz['title']}** ({quiz['section']})")
+                        st.write(f"Status: {quiz['status'].replace('_', ' ').capitalize()}")
+
+                        if st.button(f"Start Quiz - {quiz['title']}", key=f"start_quiz_{i}"):
+                            st.session_state["quiz_id"] = quiz['quiz_id']
+                            st.session_state["page"] = "quiz"
+                            st.session_state["current_question"] = start_quiz(quiz['quiz_id'])
+                            return
+
+                else:
+                    st.write("No quiz recommendations available.")
+
+                st.success("Analysis complete!")
+            else:
+                st.error("Failed to analyze the skin condition. Please try again.")
+        else:
+            st.error("Please provide either a text description or an image for analysis.")
+
+    # Navigation Buttons
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Find More Insights"):
+            st.session_state["page"] = "insights"
+    with col2:
+        if st.button("Logout"):
+            st.session_state.clear()
+            st.session_state["page"] = "login"
+
+            if st.button(f"Start Quiz - {quiz['title']}", key=f"start_quiz_{i}"):
+                st.session_state["quiz_id"] = quiz['quiz_id']
+                st.session_state["page"] = "quiz"
+                st.write(f"Quiz '{quiz['title']}' selected.")
+
+def show_quiz_page():
+    st.title("Quiz")
+
+    if "current_question" not in st.session_state:
+        st.error("No quiz started. Please select a quiz to start.")
+        return
+
+    # Get the current question details
+    question_details = st.session_state["current_question"]
+    question = question_details["question"]
+    quiz_id = question_details["quiz_id"]
+
+    # Display the current question and options
+    st.subheader(f"Question {question_details['current_question_index'] + 1}")
+    st.write(question["question"])
+
+    selected_option = st.radio("Select an option", question["options"])
+    response_time = st.slider("Response Time (seconds)", min_value=1, max_value=60, value=10)
+
+    if st.button("Submit Answer"):
+        # Handle submitting the current question's answer
+        next_question_details = fetch_next_question(
+            quiz_id=quiz_id,
+            question_id=question["question_id"],
+            response=selected_option,
+            response_time=response_time
+        )
+
+        if next_question_details:
+            st.session_state["current_question"] = next_question_details
+
+            # Check if this is the last question
+            if next_question_details["current_question_index"] + 1 >= next_question_details["total_question_count"]:
+                st.success("All questions answered. Submitting the quiz...")
+                result = submit_quiz(quiz_id)
+                if result and result.get("success"):
+                    st.session_state["page"] = "insights"
+                else:
+                    st.error("Failed to submit the quiz. Please try again.")
+            else:
+                st.query_params.update(rerun=True)
+
+        else:
+            st.error("Failed to fetch the next question. Please try again.")
+
+def show_quiz_results_page():
+    st.title("Quiz Submitted")
+
+    st.write("Thank you for completing the quiz! Your responses have been recorded.")
+
+    if st.button("Back to Main"):
+        st.session_state["page"] = "main"
+
+def show_insights_page():
+    st.title("Find More Insights")
+
+    if 'skin_recommendations' in st.session_state:
+        st.subheader("Your Skin Recommendations:")
+        for recommendation in st.session_state['skin_recommendations']:
+            st.write(f"- {recommendation}")
+    else:
+        st.info("No skin recommendations available. Please perform skin analysis first.")
+
+    if st.button("Logout"):
+        st.session_state.clear()
+        st.session_state["page"] = "login"
 
 # Show Quiz Management
 def show_quiz_management():
@@ -578,13 +845,16 @@ def show_login_page():
         auth_response = authenticate(username, password, api_url)
         logging.info(f"Authentication response: {auth_response}")
         if auth_response:
-            if auth_response.get("success") and auth_response.get("role") == "admin":
+            if auth_response.get("success"):
                 st.success("Login successful!")
                 st.session_state["auth_token"] = auth_response.get("access_token", "")
                 st.session_state["user_id"] = auth_response.get("user_id", "")
-                st.session_state["page"] = "admin"
-            elif auth_response.get("role") != "admin":
-                st.error("Access denied: You do not have admin privileges.")
+                user_role = auth_response.get("role", "")
+                
+                if user_role == "admin":
+                    st.session_state["page"] = "admin"
+                else:
+                    st.session_state["page"] = "chatroom"
             else:
                 st.error(f"Login failed: {auth_response.get('message')}")
         else:
@@ -614,18 +884,13 @@ def show_navigation_menu():
         st.session_state["page"] = "quiz_management"
     if st.sidebar.button("Create Quiz", key="nav_create_quiz"):
         st.session_state["page"] = "create_quiz"
+    if st.sidebar.button("Chatroom", key="nav_chatroom"):
+        st.session_state["page"] = "chatroom"
     if st.sidebar.button("Logout", key="nav_logout"):
         st.session_state.clear()
         st.session_state["page"] = "login"
         st.success("You have been logged out.")
 
-# Assuming `fetch_quizzes` is a function that fetches quizzes
-def fetch_quizzes():
-    # This function should return a list of quizzes
-    return [
-        {'_id': '66c8ab455b1f4a459bb30672', 'title_code': 'basic_information_multiple_choices', 'title': 'Basic Information Multiple Choices', 'section': 'On-boarding Quiz', 'status': 'not_started'},
-        # Add other quizzes here
-    ]
 # Main function to control the app flow
 def main():
     #for debugging
@@ -644,26 +909,6 @@ def main():
         print(f"Timestamp: {timestamp}")
         print(f"Log Level: {log_level}")
         print(f"Message: {message}")
-    # Fetch quizzes
-    quizzes = fetch_quizzes()
-
-    # Ensure quizzes is a list
-    if isinstance(quizzes, list):
-        # Method 1: Using len()
-        total_quizzes = len(quizzes)
-        logging.info(f"Total quizzes using len(): {total_quizzes}")
-
-        # Method 2: Using a loop to count elements
-        total_quizzes_loop = 0
-        for quiz in quizzes:
-            total_quizzes_loop += 1
-        logging.info(f"Total quizzes using loop: {total_quizzes_loop}")
-
-        # Method 3: Using sum() with a generator expression
-        total_quizzes_sum = sum(1 for _ in quizzes)
-        logging.info(f"Total quizzes using sum(): {total_quizzes_sum}")
-    else:
-        logging.error("Fetched quizzes is not a list.")
 
     # Original code
     if "page" not in st.session_state:
@@ -683,6 +928,14 @@ def main():
         edit_quiz_page()
     elif st.session_state["page"] == "esthetician_management":
         show_esthetician_management()
+    elif st.session_state["page"] == "chatroom":
+        show_chatroom_page()
+    elif st.session_state["page"] == "quiz":
+        show_quiz_page()
+    elif st.session_state["page"] == "view_quiz":
+        show_quiz_details_page(st.session_state["quiz_id"])
+    elif st.session_state["page"] == "insights":
+        show_insights_page()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
